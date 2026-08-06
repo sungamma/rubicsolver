@@ -3,7 +3,7 @@ import 'package:cuber/cuber.dart' as cuber;
 import 'cube_face.dart';
 import 'cube_state.dart';
 
-class RecognitionHint {
+final class RecognitionHint {
   const RecognitionHint({
     required this.stickerIndex,
     required this.assignedFace,
@@ -17,24 +17,27 @@ class RecognitionHint {
   final double confidence;
 }
 
-class ValidationIssue {
-  const ValidationIssue({
+final class ValidationIssue {
+  ValidationIssue({
     required this.code,
     required this.message,
-    this.stickerIndices = const [],
-  });
+    List<int> stickerIndices = const [],
+  }) : stickerIndices = List.unmodifiable(stickerIndices);
 
   final String code;
   final String message;
   final List<int> stickerIndices;
 }
 
-class ValidationResult {
-  ValidationResult(List<ValidationIssue> issues)
-    : issues = List.unmodifiable(issues),
-      suspectStickerIndices = List.unmodifiable({
-        for (final issue in issues) ...issue.stickerIndices,
-      });
+final class ValidationResult {
+  ValidationResult(
+    List<ValidationIssue> issues, {
+    Iterable<int>? suspectStickerIndices,
+  }) : issues = List.unmodifiable(issues),
+       suspectStickerIndices = List.unmodifiable(
+         suspectStickerIndices ??
+             {for (final issue in issues) ...issue.stickerIndices},
+       );
 
   final List<ValidationIssue> issues;
   final List<int> suspectStickerIndices;
@@ -50,10 +53,11 @@ class CubeValidator {
     List<RecognitionHint> recognitionHints = const [],
   }) {
     final counts = state.countByFace();
-    final missingFaces = {
-      for (final face in CubeFace.values)
-        if (counts[face]! < 9) face,
-    };
+    final correctionHints = _eligibleCorrectionHints(
+      state: state,
+      counts: counts,
+      hints: recognitionHints,
+    );
     final countIssues = <ValidationIssue>[];
 
     for (final face in CubeFace.values) {
@@ -69,15 +73,19 @@ class CubeValidator {
             state: state,
             face: face,
             count: count,
-            missingFaces: missingFaces,
-            hints: recognitionHints,
+            hints: correctionHints,
           ),
         ),
       );
     }
 
     if (countIssues.isNotEmpty) {
-      return ValidationResult(countIssues);
+      return ValidationResult(
+        countIssues,
+        suspectStickerIndices: correctionHints.isNotEmpty
+            ? correctionHints.map((hint) => hint.stickerIndex)
+            : {for (final issue in countIssues) ...issue.stickerIndices},
+      );
     }
 
     final status = cuber.Cube.from(state.toFacelets()).verify();
@@ -111,23 +119,11 @@ class CubeValidator {
     required CubeState state,
     required CubeFace face,
     required int count,
-    required Set<CubeFace> missingFaces,
     required List<RecognitionHint> hints,
   }) {
-    final matchingHints =
-        hints
-            .where(
-              (hint) =>
-                  hint.stickerIndex >= 0 &&
-                  hint.stickerIndex < 54 &&
-                  !state.isCenterIndex(hint.stickerIndex) &&
-                  ((count > 9 &&
-                          hint.assignedFace == face &&
-                          missingFaces.contains(hint.alternativeFace)) ||
-                      (count < 9 && hint.alternativeFace == face)),
-            )
-            .toList()
-          ..sort((left, right) => left.confidence.compareTo(right.confidence));
+    final matchingHints = hints.where(
+      (hint) => hint.assignedFace == face || hint.alternativeFace == face,
+    );
 
     if (matchingHints.isNotEmpty) {
       return [for (final hint in matchingHints.take(6)) hint.stickerIndex];
@@ -140,6 +136,28 @@ class CubeValidator {
       for (var index = 0; index < state.stickers.length; index++)
         if (!state.isCenterIndex(index) && state.stickers[index] == face) index,
     ].take(6).toList();
+  }
+
+  List<RecognitionHint> _eligibleCorrectionHints({
+    required CubeState state,
+    required Map<CubeFace, int> counts,
+    required List<RecognitionHint> hints,
+  }) {
+    final sorted = hints.toList()
+      ..sort((left, right) => left.confidence.compareTo(right.confidence));
+    final seenIndices = <int>{};
+
+    return [
+      for (final hint in sorted)
+        if (hint.stickerIndex >= 0 &&
+            hint.stickerIndex < 54 &&
+            !state.isCenterIndex(hint.stickerIndex) &&
+            state.stickers[hint.stickerIndex] == hint.assignedFace &&
+            counts[hint.assignedFace]! > 9 &&
+            counts[hint.alternativeFace]! < 9 &&
+            seenIndices.add(hint.stickerIndex))
+          hint,
+    ];
   }
 
   String _physicalCode(cuber.CubeStatus status) {
