@@ -9,6 +9,13 @@ import 'package:rubicsolver/scan/sticker_sample.dart';
 void main() {
   const sampler = FaceSampler(cropFraction: 0.8, sampleFraction: 0.5);
 
+  test('defaults to a bounded 60 percent analysis patch', () {
+    const defaults = FaceSampler();
+
+    expect(defaults.sampleFraction, 0.6);
+    expect(defaults.maxAnalysisSize, 600);
+  });
+
   test('samples nine cells from the central camera guide', () {
     final colors = <RgbColor>[
       RgbColor(245, 245, 245),
@@ -81,6 +88,68 @@ void main() {
       sampler.sample(img.encodePng(uneven)).first.qualityIssues,
       contains(StickerQuality.unevenLighting),
     );
+  });
+
+  test('detects localized white glare before trimming color outliers', () {
+    final image = _gridImage(List.filled(9, RgbColor(200, 35, 35)));
+    for (var y = 50; y < 66; y++) {
+      for (var x = 80; x < 120; x++) {
+        image.setPixelRgb(x, y, 255, 255, 255);
+      }
+    }
+
+    final sample = sampler.sample(img.encodePng(image)).first;
+
+    expect(sample.clippedPixelRatio, greaterThan(0.1));
+    expect(sample.qualityIssues, contains(StickerQuality.overexposed));
+  });
+
+  test('trims sparse interior black and white outliers', () {
+    final image = _gridImage(List.filled(9, RgbColor(30, 170, 70)));
+    for (var index = 0; index < 100; index++) {
+      final x = 80 + index % 10;
+      final y = 50 + index ~/ 10;
+      final channel = index.isEven ? 0 : 255;
+      image.setPixelRgb(x, y, channel, channel, channel);
+    }
+
+    final sample = sampler.sample(img.encodePng(image)).first;
+
+    expect(sample.rgb.r, closeTo(30, 3));
+    expect(sample.rgb.g, closeTo(170, 3));
+    expect(sample.rgb.b, closeTo(70, 3));
+  });
+
+  test('can decode and sample away from the caller isolate', () async {
+    final image = _gridImage(List.filled(9, RgbColor(30, 170, 70)));
+
+    final samples = await sampler.sampleInBackground(img.encodePng(image));
+
+    expect(samples, hasLength(9));
+    expect(samples.first.rgb.g, closeTo(170, 2));
+  });
+
+  test('applies EXIF orientation before assigning grid positions', () {
+    final colors = <RgbColor>[
+      RgbColor(240, 20, 20),
+      RgbColor(20, 240, 20),
+      RgbColor(20, 20, 240),
+      RgbColor(240, 240, 20),
+      RgbColor(240, 20, 240),
+      RgbColor(20, 240, 240),
+      RgbColor(150, 40, 20),
+      RgbColor(40, 150, 20),
+      RgbColor(20, 40, 150),
+    ];
+    final image = _gridImage(colors);
+    image.exif.imageIfd.orientation = 6;
+
+    final samples = sampler.sample(img.encodeJpg(image, quality: 100));
+
+    expect(samples[0].rgb.r, closeTo(colors[6].r, 12));
+    expect(samples[0].rgb.g, closeTo(colors[6].g, 12));
+    expect(samples[2].rgb.r, closeTo(colors[0].r, 12));
+    expect(samples[2].rgb.g, closeTo(colors[0].g, 12));
   });
 
   test('throws a Chinese sampling error for invalid image bytes', () {

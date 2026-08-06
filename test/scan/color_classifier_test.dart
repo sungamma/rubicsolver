@@ -31,6 +31,15 @@ void main() {
       final hint = result.recognitionHints.singleWhere(
         (candidate) => candidate.stickerIndex == 9,
       );
+      final sampleLab = samples[CubeFace.right]![0].rgb.toLab();
+      final assignedDistance = deltaE76(
+        sampleLab,
+        result.centerColors[hint.assignedFace]!.toLab(),
+      );
+      final alternativeDistance = deltaE76(
+        sampleLab,
+        result.centerColors[hint.alternativeFace]!.toLab(),
+      );
 
       expect(result.uncertainStickerIndices, contains(9));
       expect({
@@ -38,6 +47,13 @@ void main() {
         hint.alternativeFace,
       }, containsAll([CubeFace.up, CubeFace.down]));
       expect(hint.confidence, lessThan(0.02));
+      expect(
+        hint.confidence,
+        closeTo(
+          (alternativeDistance - assignedDistance) / alternativeDistance,
+          1e-9,
+        ),
+      );
     },
   );
 
@@ -79,6 +95,21 @@ void main() {
     expect(
       () => classifier.classify(samplesByFace: samples),
       throwsArgumentError,
+    );
+  });
+
+  test('returns immutable result collections', () {
+    final result = classifier.classify(samplesByFace: _solvedSamples());
+
+    expect(
+      () => result.recognitionHints.add(result.recognitionHints.first),
+      throwsUnsupportedError,
+    );
+    expect(() => result.uncertainStickerIndices.add(0), throwsUnsupportedError);
+    expect(() => result.issues.clear(), throwsUnsupportedError);
+    expect(
+      () => result.centerColors[CubeFace.up] = RgbColor(0, 0, 0),
+      throwsUnsupportedError,
     );
   });
 }
