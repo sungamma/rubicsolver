@@ -1,0 +1,138 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_face.dart';
+import 'package:rubicsolver/cube/cube_state.dart';
+import 'package:rubicsolver/scan/color_classifier.dart';
+import 'package:rubicsolver/scan/color_math.dart';
+import 'package:rubicsolver/scan/sticker_sample.dart';
+
+void main() {
+  const classifier = ColorClassifier();
+
+  test('classifies a solved cube against its six scanned centers', () {
+    final result = classifier.classify(samplesByFace: _solvedSamples());
+
+    expect(result.state, CubeState.solved());
+    expect(result.recognitionHints, hasLength(48));
+    expect(result.uncertainStickerIndices, isEmpty);
+    expect(result.issues, isEmpty);
+    expect(result.centerColors.keys, containsAll(CubeFace.values));
+  });
+
+  test(
+    'reports an ambiguous sticker with global index and alternative face',
+    () {
+      final samples = _solvedSamples();
+      samples[CubeFace.right]![0] = StickerSample(
+        rgb: _ambiguousColor(CubeFace.up, CubeFace.down),
+        luminanceVariance: 0,
+      );
+
+      final result = classifier.classify(samplesByFace: samples);
+      final hint = result.recognitionHints.singleWhere(
+        (candidate) => candidate.stickerIndex == 9,
+      );
+
+      expect(result.uncertainStickerIndices, contains(9));
+      expect({
+        hint.assignedFace,
+        hint.alternativeFace,
+      }, containsAll([CubeFace.up, CubeFace.down]));
+      expect(hint.confidence, lessThan(0.02));
+    },
+  );
+
+  test(
+    'forces centers to their captured faces and warns when centers overlap',
+    () {
+      final samples = _solvedSamples();
+      samples[CubeFace.down]![4] = samples[CubeFace.up]![4];
+
+      final result = classifier.classify(samplesByFace: samples);
+
+      expect(result.state.stickers[CubeFace.down.centerIndex], CubeFace.down);
+      expect(
+        result.issues.map((issue) => issue.code),
+        contains('center-colors-too-close'),
+      );
+    },
+  );
+
+  test('surfaces low quality samples as uncertain', () {
+    final samples = _solvedSamples();
+    samples[CubeFace.back]![8] = StickerSample(
+      rgb: RgbColor(0, 0, 5),
+      luminanceVariance: 0,
+    );
+
+    final result = classifier.classify(samplesByFace: samples);
+
+    expect(result.uncertainStickerIndices, contains(53));
+    expect(
+      result.issues.map((issue) => issue.code),
+      contains('poor-sample-quality'),
+    );
+  });
+
+  test('rejects an incomplete six-face capture', () {
+    final samples = _solvedSamples()..remove(CubeFace.back);
+
+    expect(
+      () => classifier.classify(samplesByFace: samples),
+      throwsArgumentError,
+    );
+  });
+}
+
+Map<CubeFace, List<StickerSample>> _solvedSamples() {
+  return {
+    for (final face in CubeFace.values)
+      face: List.generate(
+        9,
+        (_) => StickerSample(rgb: _colors[face]!, luminanceVariance: 0),
+      ),
+  };
+}
+
+final _colors = {
+  CubeFace.up: RgbColor(245, 245, 245),
+  CubeFace.right: RgbColor(220, 35, 45),
+  CubeFace.front: RgbColor(30, 170, 70),
+  CubeFace.down: RgbColor(250, 210, 25),
+  CubeFace.left: RgbColor(245, 125, 20),
+  CubeFace.back: RgbColor(25, 90, 210),
+};
+
+RgbColor _ambiguousColor(CubeFace firstFace, CubeFace secondFace) {
+  final first = _colors[firstFace]!;
+  final second = _colors[secondFace]!;
+  RgbColor? bestColor;
+  var bestGap = double.infinity;
+
+  for (var step = 0; step <= 1000; step++) {
+    final ratio = step / 1000;
+    final candidate = RgbColor(
+      (first.r + (second.r - first.r) * ratio).round(),
+      (first.g + (second.g - first.g) * ratio).round(),
+      (first.b + (second.b - first.b) * ratio).round(),
+    );
+    final distances = [
+      for (final entry in _colors.entries)
+        (
+          face: entry.key,
+          distance: deltaE76(candidate.toLab(), entry.value.toLab()),
+        ),
+    ]..sort((left, right) => left.distance.compareTo(right.distance));
+    if ({
+      distances[0].face,
+      distances[1].face,
+    }.containsAll({firstFace, secondFace})) {
+      final gap = (distances[1].distance - distances[0].distance).abs();
+      if (gap < bestGap) {
+        bestGap = gap;
+        bestColor = candidate;
+      }
+    }
+  }
+
+  return bestColor!;
+}
