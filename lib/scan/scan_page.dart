@@ -4,10 +4,11 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../cube/cube_face.dart';
-import '../cube/cube_palette.dart';
 import '../cube/cube_state.dart';
 import '../editor/cube_editor_page.dart';
 import 'face_sampler.dart';
+import 'scan_camera.dart';
+import 'scan_preview_geometry.dart';
 import 'scan_session.dart';
 import 'sticker_sample.dart';
 
@@ -17,33 +18,36 @@ class ScanPage extends StatefulWidget {
   const ScanPage({
     super.key,
     this.cameraDiscovery,
+    this.cameraFactory,
     this.faceSampler = const FaceSampler(),
+    this.session,
   });
 
   final CameraDiscovery? cameraDiscovery;
+  final ScanCameraFactory? cameraFactory;
   final FaceSampler faceSampler;
+  final ScanSession? session;
 
   @override
   State<ScanPage> createState() => _ScanPageState();
 }
 
 class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
-  final ScanSession _session = ScanSession();
+  late final ScanSession _session;
 
-  CameraController? _controller;
+  ScanCameraController? _controller;
   List<StickerSample>? _previewSamples;
   String? _cameraError;
   String? _samplingError;
   var _loadingCamera = true;
   var _sampling = false;
-  var _flashSupported = false;
-  var _flashEnabled = false;
   var _cameraGeneration = 0;
   var _openingEditor = false;
 
   @override
   void initState() {
     super.initState();
+    _session = widget.session ?? ScanSession();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_initializeCamera());
   }
@@ -75,7 +79,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       });
     }
 
-    CameraController? nextController;
+    ScanCameraController? nextController;
     try {
       final discover = widget.cameraDiscovery ?? availableCameras;
       final cameras = await discover();
@@ -90,22 +94,18 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         return;
       }
 
-      final description = _backCameraFrom(cameras) ?? cameras.first;
-      nextController = CameraController(
-        description,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
-      );
-      await nextController.initialize();
-
-      var supportsFlash = false;
-      try {
-        await nextController.setFlashMode(FlashMode.off);
-        supportsFlash = true;
-      } on CameraException {
-        supportsFlash = false;
+      final description = _backCameraFrom(cameras);
+      if (description == null) {
+        setState(() {
+          _loadingCamera = false;
+          _cameraError = '未找到后置相机，请改用手动录入。';
+        });
+        return;
       }
+      final createCamera =
+          widget.cameraFactory ?? PluginScanCameraController.new;
+      nextController = createCamera(description);
+      await nextController.initialize();
 
       if (!mounted || generation != _cameraGeneration) {
         await nextController.dispose();
@@ -116,8 +116,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       setState(() {
         _controller = nextController;
         _loadingCamera = false;
-        _flashSupported = supportsFlash;
-        _flashEnabled = false;
       });
       nextController = null;
       await previous?.dispose();
@@ -143,42 +141,16 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       setState(() {
         _controller = null;
         _loadingCamera = true;
-        _flashEnabled = false;
       });
     }
     await controller.dispose();
   }
 
-  Future<void> _toggleFlash() async {
-    final controller = _controller;
-    if (controller == null || !_flashSupported) {
-      return;
-    }
-    final enabled = !_flashEnabled;
-    try {
-      await controller.setFlashMode(enabled ? FlashMode.torch : FlashMode.off);
-      if (mounted) {
-        setState(() => _flashEnabled = enabled);
-      }
-    } on CameraException {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _flashSupported = false;
-        _flashEnabled = false;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('此设备不支持闪光灯切换。')));
-    }
-  }
-
   Future<void> _capture() async {
     final controller = _controller;
     if (controller == null ||
-        !controller.value.isInitialized ||
-        controller.value.isTakingPicture ||
+        !controller.isInitialized ||
+        controller.isTakingPicture ||
         _sampling) {
       return;
     }
@@ -233,6 +205,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     }
     _openingEditor = true;
     final result = _session.classify();
+    await _releaseCamera();
     if (!mounted) {
       _openingEditor = false;
       return;
@@ -245,6 +218,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
           recognitionHints: result.recognitionHints,
           uncertainStickerIndices: result.uncertainStickerIndices,
           classificationIssues: result.issues,
+          centerColors: result.centerColors,
           onRescanFace: (face) => Navigator.of(editorContext).pop(face),
         ),
       ),
@@ -252,12 +226,18 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     if (!mounted) {
       return;
     }
-    setState(() {
-      _openingEditor = false;
-      if (rescanFace != null) {
+    if (rescanFace != null) {
+      setState(() {
         _session.restartFrom(rescanFace);
-      }
-    });
+        _openingEditor = false;
+      });
+      await _initializeCamera();
+    } else {
+      setState(() {
+        _openingEditor = false;
+        _loadingCamera = false;
+      });
+    }
   }
 
   void _openManualEntry() {
@@ -276,14 +256,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         title: Text(
           currentFace == null ? '扫描完成' : '扫描 ${currentFace.letter} 面',
         ),
-        actions: [
-          if (_flashSupported && _previewSamples == null)
-            IconButton(
-              tooltip: _flashEnabled ? '关闭闪光灯' : '打开闪光灯',
-              onPressed: _toggleFlash,
-              icon: Icon(_flashEnabled ? Icons.flash_on : Icons.flash_off),
-            ),
-        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(4),
           child: LinearProgressIndicator(value: _session.progress),
@@ -338,7 +310,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     }
 
     final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) {
+    if (controller == null || !controller.isInitialized) {
       return _CameraFallback(
         message: '相机尚未就绪，请重试或改用手动录入。',
         onRetry: _initializeCamera,
@@ -349,6 +321,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       controller: controller,
       face: _session.currentFace!,
       completedFaceCount: _session.completedFaceCount,
+      cropFraction: widget.faceSampler.cropFraction,
       sampling: _sampling,
       samplingError: _samplingError,
       onCapture: _capture,
@@ -361,14 +334,16 @@ class _CaptureGuide extends StatelessWidget {
     required this.controller,
     required this.face,
     required this.completedFaceCount,
+    required this.cropFraction,
     required this.sampling,
     required this.samplingError,
     required this.onCapture,
   });
 
-  final CameraController controller;
+  final ScanCameraController controller;
   final CubeFace face;
   final int completedFaceCount;
+  final double cropFraction;
   final bool sampling;
   final String? samplingError;
   final VoidCallback onCapture;
@@ -398,10 +373,12 @@ class _CaptureGuide extends StatelessWidget {
                     children: [
                       ColoredBox(
                         color: Colors.black,
-                        child: Center(child: CameraPreview(controller)),
+                        child: _CoverCameraPreview(controller: controller),
                       ),
-                      const IgnorePointer(
-                        child: CustomPaint(painter: _GridGuidePainter()),
+                      IgnorePointer(
+                        child: CustomPaint(
+                          painter: _GridGuidePainter(cropFraction),
+                        ),
                       ),
                       if (sampling)
                         const ColoredBox(
@@ -544,8 +521,8 @@ class _FaceInstruction extends StatelessWidget {
     return Row(
       children: [
         CircleAvatar(
-          backgroundColor: CubePalette.colorFor(face),
-          foregroundColor: CubePalette.foregroundFor(face),
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
           child: Text(face.letter),
         ),
         const SizedBox(width: 12),
@@ -640,25 +617,70 @@ class _CompletedScan extends StatelessWidget {
 }
 
 class _GridGuidePainter extends CustomPainter {
-  const _GridGuidePainter();
+  const _GridGuidePainter(this.cropFraction);
+
+  final double cropFraction;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final guide = ScanPreviewGeometry.samplingRect(
+      viewportSize: size,
+      cropFraction: cropFraction,
+    );
+    final shade = Paint()..color = const Color(0x44000000);
+    final shadedArea = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Offset.zero & size)
+      ..addRect(guide);
+    canvas.drawPath(shadedArea, shade);
+
     final paint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
-    canvas.drawRect(Offset.zero & size, paint);
+    canvas.drawRect(guide, paint);
     for (var division = 1; division < 3; division++) {
-      final x = size.width * division / 3;
-      final y = size.height * division / 3;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      final x = guide.left + guide.width * division / 3;
+      final y = guide.top + guide.height * division / 3;
+      canvas.drawLine(Offset(x, guide.top), Offset(x, guide.bottom), paint);
+      canvas.drawLine(Offset(guide.left, y), Offset(guide.right, y), paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _GridGuidePainter oldDelegate) => false;
+  bool shouldRepaint(covariant _GridGuidePainter oldDelegate) =>
+      oldDelegate.cropFraction != cropFraction;
+}
+
+class _CoverCameraPreview extends StatelessWidget {
+  const _CoverCameraPreview({required this.controller});
+
+  final ScanCameraController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final sourceSize = controller.previewSize!;
+        final fittedSize = ScanPreviewGeometry.coverSize(
+          sourceSize: sourceSize,
+          viewportSize: constraints.biggest,
+        );
+        return ClipRect(
+          child: OverflowBox(
+            minWidth: fittedSize.width,
+            maxWidth: fittedSize.width,
+            minHeight: fittedSize.height,
+            maxHeight: fittedSize.height,
+            child: SizedBox.fromSize(
+              size: fittedSize,
+              child: controller.buildPreview(),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 CameraDescription? _backCameraFrom(List<CameraDescription> cameras) {
@@ -683,22 +705,22 @@ String _cameraErrorMessage(Object error) {
 
 String _faceName(CubeFace face) {
   return switch (face) {
-    CubeFace.up => '白色（U）面',
-    CubeFace.right => '红色（R）面',
-    CubeFace.front => '绿色（F）面',
-    CubeFace.down => '黄色（D）面',
-    CubeFace.left => '橙色（L）面',
-    CubeFace.back => '蓝色（B）面',
+    CubeFace.up => 'U 面',
+    CubeFace.right => 'R 面',
+    CubeFace.front => 'F 面',
+    CubeFace.down => 'D 面',
+    CubeFace.left => 'L 面',
+    CubeFace.back => 'B 面',
   };
 }
 
 String _orientationHint(CubeFace face) {
   return switch (face) {
-    CubeFace.up => '蓝色面朝上',
-    CubeFace.right => '白色面朝上',
-    CubeFace.front => '白色面朝上',
-    CubeFace.down => '绿色面朝上',
-    CubeFace.left => '白色面朝上',
-    CubeFace.back => '白色面朝上',
+    CubeFace.up => '保持 B 面朝上',
+    CubeFace.right => '保持 U 面朝上',
+    CubeFace.front => '保持 U 面朝上',
+    CubeFace.down => '保持 F 面朝上',
+    CubeFace.left => '保持 U 面朝上',
+    CubeFace.back => '保持 U 面朝上',
   };
 }

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../cube/cube_face.dart';
-import '../cube/cube_palette.dart';
 import '../cube/cube_state.dart';
+import '../scan/color_math.dart';
+import 'cube_display_colors.dart';
 
 class CubeNet extends StatelessWidget {
   const CubeNet({
@@ -10,11 +11,13 @@ class CubeNet extends StatelessWidget {
     required this.state,
     this.onStickerTap,
     this.highlightedStickerIndices = const [],
+    this.centerColors = const {},
   });
 
   final CubeState state;
   final ValueChanged<int>? onStickerTap;
   final Iterable<int> highlightedStickerIndices;
+  final Map<CubeFace, RgbColor> centerColors;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +35,7 @@ class CubeNet extends StatelessWidget {
                     face: CubeFace.up,
                     state: state,
                     highlightedIndices: highlighted,
+                    centerColors: centerColors,
                     onStickerTap: onStickerTap,
                   ),
                 ),
@@ -53,6 +57,7 @@ class CubeNet extends StatelessWidget {
                       face: face,
                       state: state,
                       highlightedIndices: highlighted,
+                      centerColors: centerColors,
                       onStickerTap: onStickerTap,
                     ),
                   ),
@@ -68,6 +73,7 @@ class CubeNet extends StatelessWidget {
                     face: CubeFace.down,
                     state: state,
                     highlightedIndices: highlighted,
+                    centerColors: centerColors,
                     onStickerTap: onStickerTap,
                   ),
                 ),
@@ -86,12 +92,14 @@ class _FaceGrid extends StatelessWidget {
     required this.face,
     required this.state,
     required this.highlightedIndices,
+    required this.centerColors,
     required this.onStickerTap,
   });
 
   final CubeFace face;
   final CubeState state;
   final Set<int> highlightedIndices;
+  final Map<CubeFace, RgbColor> centerColors;
   final ValueChanged<int>? onStickerTap;
 
   @override
@@ -115,7 +123,10 @@ class _FaceGrid extends StatelessWidget {
 
         return Material(
           key: ValueKey('sticker-$stickerIndex'),
-          color: CubePalette.colorFor(stickerFace),
+          color: CubeDisplayColors.colorFor(
+            stickerFace,
+            centerColors: centerColors,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(4),
             side: BorderSide(
@@ -135,7 +146,10 @@ class _FaceGrid extends StatelessWidget {
                   Icon(
                     Icons.lock_outline,
                     size: 15,
-                    color: CubePalette.foregroundFor(stickerFace),
+                    color: CubeDisplayColors.foregroundFor(
+                      stickerFace,
+                      centerColors: centerColors,
+                    ),
                   ),
               ],
             ),

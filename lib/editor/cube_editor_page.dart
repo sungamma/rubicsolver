@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../cube/cube_face.dart';
-import '../cube/cube_palette.dart';
 import '../cube/cube_state.dart';
 import '../cube/cube_validation.dart';
 import '../scan/color_classifier.dart';
+import '../scan/color_math.dart';
+import 'cube_display_colors.dart';
 import 'cube_net.dart';
 
 class CubeEditorPage extends StatefulWidget {
@@ -15,6 +16,7 @@ class CubeEditorPage extends StatefulWidget {
     this.recognitionHints = const [],
     this.uncertainStickerIndices = const [],
     this.classificationIssues = const [],
+    this.centerColors = const {},
     this.onRescanFace,
   });
 
@@ -23,6 +25,7 @@ class CubeEditorPage extends StatefulWidget {
   final List<RecognitionHint> recognitionHints;
   final List<int> uncertainStickerIndices;
   final List<ClassificationIssue> classificationIssues;
+  final Map<CubeFace, RgbColor> centerColors;
   final ValueChanged<CubeFace>? onRescanFace;
 
   @override
@@ -73,8 +76,14 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
             for (final face in CubeFace.values)
               ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: CubePalette.colorFor(face),
-                  foregroundColor: CubePalette.foregroundFor(face),
+                  backgroundColor: CubeDisplayColors.colorFor(
+                    face,
+                    centerColors: widget.centerColors,
+                  ),
+                  foregroundColor: CubeDisplayColors.foregroundFor(
+                    face,
+                    centerColors: widget.centerColors,
+                  ),
                   child: Text(face.letter),
                 ),
                 title: Text(_colorOptionLabel(face)),
@@ -125,8 +134,14 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
             for (final candidate in CubeFace.values)
               ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: CubePalette.colorFor(candidate),
-                  foregroundColor: CubePalette.foregroundFor(candidate),
+                  backgroundColor: CubeDisplayColors.colorFor(
+                    candidate,
+                    centerColors: widget.centerColors,
+                  ),
+                  foregroundColor: CubeDisplayColors.foregroundFor(
+                    candidate,
+                    centerColors: widget.centerColors,
+                  ),
                   child: Text(candidate.letter),
                 ),
                 title: Text('${_faceName(candidate)}（${candidate.letter}）'),
@@ -136,7 +151,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
         ),
       ),
     );
-    if (face != null) {
+    if (mounted && face != null) {
       callback(face);
     }
   }
@@ -183,6 +198,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                   CubeNet(
                     state: _state,
                     highlightedStickerIndices: highlighted,
+                    centerColors: widget.centerColors,
                     onStickerTap: _editSticker,
                   ),
                   const SizedBox(height: 16),
@@ -195,7 +211,10 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                       for (final face in CubeFace.values)
                         Chip(
                           avatar: CircleAvatar(
-                            backgroundColor: CubePalette.colorFor(face),
+                            backgroundColor: CubeDisplayColors.colorFor(
+                              face,
+                              centerColors: widget.centerColors,
+                            ),
                           ),
                           label: Text('${face.letter} ${counts[face]}/9'),
                         ),
@@ -203,6 +222,11 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                   ),
                   if (widget.classificationIssues.isNotEmpty) ...[
                     const SizedBox(height: 16),
+                    _MessageCard(
+                      icon: Icons.warning_amber_rounded,
+                      color: Theme.of(context).colorScheme.error,
+                      message: '扫描质量问题尚未解决，请重新扫描对应面后再求解。',
+                    ),
                     for (final issue in widget.classificationIssues)
                       _MessageCard(
                         icon: Icons.camera_alt_outlined,
@@ -211,13 +235,14 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                       ),
                   ],
                   const SizedBox(height: 16),
-                  if (_validation.isValid)
+                  if (_validation.isValid &&
+                      widget.classificationIssues.isEmpty)
                     _MessageCard(
                       icon: Icons.check_circle_outline,
                       color: Theme.of(context).colorScheme.primary,
                       message: '状态合法，可以开始求解。',
                     )
-                  else
+                  else if (!_validation.isValid)
                     for (final issue in _validation.issues)
                       _MessageCard(
                         icon: Icons.error_outline,
@@ -241,7 +266,9 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: FilledButton(
-          onPressed: _validation.isValid ? _startSolve : null,
+          onPressed: _validation.isValid && widget.classificationIssues.isEmpty
+              ? _startSolve
+              : null,
           child: const Text('开始求解'),
         ),
       ),

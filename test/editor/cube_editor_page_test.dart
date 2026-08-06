@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/editor/cube_editor_page.dart';
+import 'package:rubicsolver/scan/color_classifier.dart';
+import 'package:rubicsolver/scan/color_math.dart';
 
 void main() {
   testWidgets('renders all 54 stickers in a cube net', (tester) async {
@@ -76,6 +78,59 @@ void main() {
     await tester.pump();
 
     expect(submitted, CubeState.solved());
+  });
+
+  testWidgets(
+    'classification issues block solving until the face is rescanned',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CubeEditorPage(
+            initialState: CubeState.solved(),
+            classificationIssues: [
+              ClassificationIssue(
+                code: 'poor-sample-quality',
+                message: '部分贴纸采样质量较差。',
+              ),
+            ],
+          ),
+        ),
+      );
+
+      expect(_solveButton(tester).onPressed, isNull);
+      expect(find.textContaining('请重新扫描'), findsOneWidget);
+    },
+  );
+
+  testWidgets('uses recognized center colors for stickers and color choices', (
+    tester,
+  ) async {
+    final centerColors = {
+      for (final face in CubeFace.values) face: RgbColor(20, 30, 40),
+      CubeFace.up: RgbColor(12, 34, 56),
+    };
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(
+          initialState: CubeState.solved(),
+          centerColors: centerColors,
+        ),
+      ),
+    );
+
+    final sticker = tester.widget<Material>(
+      find.byKey(const ValueKey('sticker-0')),
+    );
+    expect(sticker.color, const Color.fromARGB(255, 12, 34, 56));
+
+    await tester.tap(find.byKey(const ValueKey('sticker-0')));
+    await tester.pumpAndSettle();
+
+    final upOption = find.widgetWithText(ListTile, '上面颜色');
+    final avatar = tester.widget<CircleAvatar>(
+      find.descendant(of: upOption, matching: find.byType(CircleAvatar)),
+    );
+    expect(avatar.backgroundColor, const Color.fromARGB(255, 12, 34, 56));
   });
 }
 
