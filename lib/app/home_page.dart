@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import '../cube/cube_state.dart';
 import '../editor/cube_editor_page.dart';
 import '../scan/scan_page.dart';
+import '../settings/about_page.dart';
+import '../update/update_service.dart';
 import 'app_info.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.updateService});
+
+  final UpdateService? updateService;
 
   @override
   Widget build(BuildContext context) {
@@ -117,12 +121,10 @@ class HomePage extends StatelessWidget {
   }
 
   void _showAbout(BuildContext context) {
-    showAboutDialog(
-      context: context,
-      applicationName: AppInfo.name,
-      applicationVersion: '1.0.0',
-      applicationLegalese: '${AppInfo.author} · ${AppInfo.email}',
-      children: const [SizedBox(height: 12), Text('设置与更新入口将在后续阶段接入。')],
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AboutPage(updateService: updateService),
+      ),
     );
   }
 }
