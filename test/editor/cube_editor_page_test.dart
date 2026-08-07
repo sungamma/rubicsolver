@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/editor/cube_editor_page.dart';
+import 'package:rubicsolver/solver/cube_solver.dart';
+import 'package:rubicsolver/solver/solution_move.dart';
 import 'package:rubicsolver/scan/color_classifier.dart';
 import 'package:rubicsolver/scan/color_math.dart';
 
@@ -156,6 +158,23 @@ void main() {
     expect(_solveButton(tester).onPressed, isNotNull);
     expect(find.text('状态合法，可以开始求解。'), findsOneWidget);
   });
+
+  testWidgets('valid state opens the solution playback page', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(
+          initialState: CubeState.solved(),
+          solver: _FakeCubeSolver(const [SolutionMove('R')]),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('开始求解'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('解法演示'), findsOneWidget);
+    expect(find.byKey(const ValueKey('solution-move-0')), findsOneWidget);
+  });
 }
 
 Widget _testApp(CubeState state) {
@@ -164,4 +183,17 @@ Widget _testApp(CubeState state) {
 
 FilledButton _solveButton(WidgetTester tester) {
   return tester.widget<FilledButton>(find.widgetWithText(FilledButton, '开始求解'));
+}
+
+class _FakeCubeSolver extends CubeSolver {
+  _FakeCubeSolver(this.result);
+
+  final List<SolutionMove> result;
+
+  @override
+  Future<List<SolutionMove>> solve(
+    CubeState state, {
+    int? maxDepth,
+    Duration? timeout,
+  }) async => result;
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../cube/cube_face.dart';
@@ -7,6 +9,8 @@ import '../scan/color_classifier.dart';
 import '../scan/color_math.dart';
 import 'cube_display_colors.dart';
 import 'cube_net.dart';
+import '../playback/solution_page.dart';
+import '../solver/cube_solver.dart';
 
 class CubeEditorPage extends StatefulWidget {
   const CubeEditorPage({
@@ -18,6 +22,7 @@ class CubeEditorPage extends StatefulWidget {
     this.classificationIssues = const [],
     this.centerColors = const {},
     this.onRescanFace,
+    this.solver = const CubeSolver(),
   });
 
   final CubeState initialState;
@@ -27,6 +32,7 @@ class CubeEditorPage extends StatefulWidget {
   final List<ClassificationIssue> classificationIssues;
   final Map<CubeFace, RgbColor> centerColors;
   final ValueChanged<CubeFace>? onRescanFace;
+  final CubeSolver solver;
 
   @override
   State<CubeEditorPage> createState() => _CubeEditorPageState();
@@ -39,6 +45,8 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
   late List<RecognitionHint> _recognitionHints;
   late Set<int> _uncertainStickerIndices;
   late ValidationResult _validation;
+  var _solving = false;
+  String? _solveError;
 
   @override
   void initState() {
@@ -68,32 +76,29 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('选择贴纸颜色', style: Theme.of(context).textTheme.titleMedium),
-            for (final face in CubeFace.values)
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: CubeDisplayColors.colorFor(
-                    face,
-                    centerColors: widget.centerColors,
-                  ),
-                  foregroundColor: CubeDisplayColors.foregroundFor(
-                    face,
-                    centerColors: widget.centerColors,
-                  ),
-                  child: Text(face.letter),
+      builder: (context) => _ScrollableSheet(
+        title: '选择贴纸颜色',
+        children: [
+          for (final face in CubeFace.values)
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: CubeDisplayColors.colorFor(
+                  face,
+                  centerColors: widget.centerColors,
                 ),
-                title: Text(_colorOptionLabel(face)),
-                trailing: _state.stickers[index] == face
-                    ? const Icon(Icons.check)
-                    : null,
-                onTap: () => Navigator.of(context).pop(face),
+                foregroundColor: CubeDisplayColors.foregroundFor(
+                  face,
+                  centerColors: widget.centerColors,
+                ),
+                child: Text(face.letter),
               ),
-          ],
-        ),
+              title: Text(_colorOptionLabel(face)),
+              trailing: _state.stickers[index] == face
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.of(context).pop(face),
+            ),
+        ],
       ),
     );
     if (!mounted || selected == null) {
@@ -106,6 +111,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
       }
       _recognitionHints.removeWhere((hint) => hint.stickerIndex == index);
       _uncertainStickerIndices.remove(index);
+      _solveError = null;
       _validate();
     });
   }
@@ -115,6 +121,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
       _state = CubeState.solved();
       _recognitionHints = [];
       _uncertainStickerIndices = {};
+      _solveError = null;
       _validate();
     });
   }
@@ -128,29 +135,26 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('选择要重新扫描的面', style: Theme.of(context).textTheme.titleMedium),
-            for (final candidate in CubeFace.values)
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: CubeDisplayColors.colorFor(
-                    candidate,
-                    centerColors: widget.centerColors,
-                  ),
-                  foregroundColor: CubeDisplayColors.foregroundFor(
-                    candidate,
-                    centerColors: widget.centerColors,
-                  ),
-                  child: Text(candidate.letter),
+      builder: (context) => _ScrollableSheet(
+        title: '选择要重新扫描的面',
+        children: [
+          for (final candidate in CubeFace.values)
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: CubeDisplayColors.colorFor(
+                  candidate,
+                  centerColors: widget.centerColors,
                 ),
-                title: Text('${_faceName(candidate)}（${candidate.letter}）'),
-                onTap: () => Navigator.of(context).pop(candidate),
+                foregroundColor: CubeDisplayColors.foregroundFor(
+                  candidate,
+                  centerColors: widget.centerColors,
+                ),
+                child: Text(candidate.letter),
               ),
-          ],
-        ),
+              title: Text('${_faceName(candidate)}（${candidate.letter}）'),
+              onTap: () => Navigator.of(context).pop(candidate),
+            ),
+        ],
       ),
     );
     if (mounted && face != null) {
@@ -158,15 +162,59 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
     }
   }
 
-  void _startSolve() {
+  Future<void> _startSolve() async {
     final callback = widget.onSolve;
     if (callback != null) {
       callback(_state);
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('魔方状态已就绪。')));
+    if (_solving) {
+      return;
+    }
+    setState(() {
+      _solving = true;
+      _solveError = null;
+    });
+    try {
+      final moves = await widget.solver.solve(_state);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _solving = false);
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => SolutionPage(
+            initialState: _state,
+            moves: moves,
+            centerColors: widget.centerColors,
+          ),
+        ),
+      );
+    } on InvalidCubeException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _solving = false;
+        _solveError = error.message;
+      });
+    } on SolveTimeoutException {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _solving = false;
+        _solveError = '求解超时，请稍后重试或返回检查。';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _solving = false;
+        _solveError = '求解失败：$error';
+      });
+    }
   }
 
   @override
@@ -184,6 +232,97 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
         widget.classificationIssues.isEmpty &&
         !hasUnconfirmedStickers;
 
+    final body = SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CubeNet(
+                  state: _state,
+                  highlightedStickerIndices: highlighted,
+                  centerColors: widget.centerColors,
+                  onStickerTap: _editSticker,
+                ),
+                const SizedBox(height: 16),
+                Text('颜色计数', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final face in CubeFace.values)
+                      Chip(
+                        avatar: CircleAvatar(
+                          backgroundColor: CubeDisplayColors.colorFor(
+                            face,
+                            centerColors: widget.centerColors,
+                          ),
+                        ),
+                        label: Text('${face.letter} ${counts[face]}/9'),
+                      ),
+                  ],
+                ),
+                if (widget.classificationIssues.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _MessageCard(
+                    icon: Icons.warning_amber_rounded,
+                    color: Theme.of(context).colorScheme.error,
+                    message: '扫描质量问题尚未解决，请重新扫描对应面后再求解。',
+                  ),
+                  for (final issue in widget.classificationIssues)
+                    _MessageCard(
+                      icon: Icons.camera_alt_outlined,
+                      color: Theme.of(context).colorScheme.tertiary,
+                      message: issue.message,
+                    ),
+                ],
+                if (_solveError != null) ...[
+                  const SizedBox(height: 16),
+                  _MessageCard(
+                    icon: Icons.error_outline,
+                    color: Theme.of(context).colorScheme.error,
+                    message: _solveError!,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                if (hasUnconfirmedStickers)
+                  _MessageCard(
+                    icon: Icons.help_outline,
+                    color: Theme.of(context).colorScheme.error,
+                    message: '仍有低置信度贴纸，请逐一确认或修改。',
+                  ),
+                if (canSolve)
+                  _MessageCard(
+                    icon: Icons.check_circle_outline,
+                    color: Theme.of(context).colorScheme.primary,
+                    message: '状态合法，可以开始求解。',
+                  )
+                else if (!_validation.isValid)
+                  for (final issue in _validation.issues)
+                    _MessageCard(
+                      icon: Icons.error_outline,
+                      color: Theme.of(context).colorScheme.error,
+                      message: issue.message,
+                    ),
+                if (widget.onRescanFace != null) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _chooseFaceToRescan,
+                    icon: const Icon(Icons.camera_alt_outlined),
+                    label: const Text('重新扫描某一面'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('校验与纠错'),
@@ -195,92 +334,15 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  CubeNet(
-                    state: _state,
-                    highlightedStickerIndices: highlighted,
-                    centerColors: widget.centerColors,
-                    onStickerTap: _editSticker,
-                  ),
-                  const SizedBox(height: 16),
-                  Text('颜色计数', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final face in CubeFace.values)
-                        Chip(
-                          avatar: CircleAvatar(
-                            backgroundColor: CubeDisplayColors.colorFor(
-                              face,
-                              centerColors: widget.centerColors,
-                            ),
-                          ),
-                          label: Text('${face.letter} ${counts[face]}/9'),
-                        ),
-                    ],
-                  ),
-                  if (widget.classificationIssues.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    _MessageCard(
-                      icon: Icons.warning_amber_rounded,
-                      color: Theme.of(context).colorScheme.error,
-                      message: '扫描质量问题尚未解决，请重新扫描对应面后再求解。',
-                    ),
-                    for (final issue in widget.classificationIssues)
-                      _MessageCard(
-                        icon: Icons.camera_alt_outlined,
-                        color: Theme.of(context).colorScheme.tertiary,
-                        message: issue.message,
-                      ),
-                  ],
-                  const SizedBox(height: 16),
-                  if (hasUnconfirmedStickers)
-                    _MessageCard(
-                      icon: Icons.help_outline,
-                      color: Theme.of(context).colorScheme.error,
-                      message: '仍有低置信度贴纸，请逐一确认或修改。',
-                    ),
-                  if (canSolve)
-                    _MessageCard(
-                      icon: Icons.check_circle_outline,
-                      color: Theme.of(context).colorScheme.primary,
-                      message: '状态合法，可以开始求解。',
-                    )
-                  else if (!_validation.isValid)
-                    for (final issue in _validation.issues)
-                      _MessageCard(
-                        icon: Icons.error_outline,
-                        color: Theme.of(context).colorScheme.error,
-                        message: issue.message,
-                      ),
-                  if (widget.onRescanFace != null) ...[
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _chooseFaceToRescan,
-                      icon: const Icon(Icons.camera_alt_outlined),
-                      label: const Text('重新扫描某一面'),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
+      body: Stack(
+        children: [body, if (_solving) const _SolveProgressOverlay()],
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: FilledButton(
-          onPressed: canSolve ? _startSolve : null,
+          onPressed: canSolve && !_solving
+              ? () => unawaited(_startSolve())
+              : null,
           child: const Text('开始求解'),
         ),
       ),
@@ -310,6 +372,73 @@ class _MessageCard extends StatelessWidget {
             Icon(icon, color: color),
             const SizedBox(width: 12),
             Expanded(child: Text(message)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SolveProgressOverlay extends StatelessWidget {
+  const _SolveProgressOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: AbsorbPointer(
+        child: ColoredBox(
+          color: Colors.black26,
+          child: Center(
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('正在求解…'),
+                    SizedBox(height: 4),
+                    Text('请保持页面打开，求解在本机后台运行。'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScrollableSheet extends StatelessWidget {
+  const _ScrollableSheet({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height;
+    return SafeArea(
+      child: SizedBox(
+        height: height * .75,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 12),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+            ),
+            ...children,
           ],
         ),
       ),
