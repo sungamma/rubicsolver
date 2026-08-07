@@ -48,6 +48,7 @@ final class ColorClassifier {
 
   ColorClassificationResult classify({
     required Map<CubeFace, List<StickerSample>> samplesByFace,
+    Map<CubeFace, Map<int, CubeFace>> lockedFacesByFace = const {},
   }) {
     for (final face in CubeFace.values) {
       if (samplesByFace[face]?.length != 9) {
@@ -93,17 +94,25 @@ final class ColorClassifier {
     final poorQualityIndices = <int>[];
     for (final capturedFace in CubeFace.values) {
       final samples = samplesByFace[capturedFace]!;
+      final lockedFaces = lockedFacesByFace[capturedFace] ?? const {};
       for (var localIndex = 0; localIndex < samples.length; localIndex++) {
         final globalIndex = capturedFace.startIndex + localIndex;
         final sample = samples[localIndex];
-        if (sample.isLowQuality) {
-          poorQualityIndices.add(globalIndex);
-          uncertainIndices.add(globalIndex);
-        }
 
         if (localIndex == 4) {
           stickers.add(capturedFace);
           continue;
+        }
+
+        final lockedFace = lockedFaces[localIndex];
+        if (lockedFace != null) {
+          stickers.add(lockedFace);
+          continue;
+        }
+
+        if (sample.isLowQuality) {
+          poorQualityIndices.add(globalIndex);
+          uncertainIndices.add(globalIndex);
         }
 
         final sampleLab = sample.rgb.toLab();

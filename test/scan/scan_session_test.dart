@@ -29,6 +29,21 @@ void main() {
     );
   });
 
+  test('persists locked colors for the accepted face', () {
+    final session = ScanSession();
+
+    session.acceptCurrent(
+      _samplesFor(CubeFace.up),
+      lockedFaces: const {0: CubeFace.right},
+    );
+
+    expect(session.lockedFacesByFace[CubeFace.up]![0], CubeFace.right);
+    expect(
+      () => session.lockedFacesByFace[CubeFace.up]![0] = CubeFace.front,
+      throwsUnsupportedError,
+    );
+  });
+
   test('classifies a completed session as a solved cube', () {
     final session = ScanSession();
     for (final face in CubeFace.values) {
@@ -49,7 +64,7 @@ void main() {
   test('restartFrom removes the selected face and all later captures', () {
     final session = ScanSession();
     for (final face in CubeFace.values.take(4)) {
-      session.acceptCurrent(_samplesFor(face));
+      session.acceptCurrent(_samplesFor(face), lockedFaces: {0: face});
     }
 
     session.restartFrom(CubeFace.front);
@@ -57,6 +72,7 @@ void main() {
     expect(session.currentFace, CubeFace.front);
     expect(session.completedFaceCount, 2);
     expect(session.samplesByFace.keys, [CubeFace.up, CubeFace.right]);
+    expect(session.lockedFacesByFace.keys, [CubeFace.up, CubeFace.right]);
     expect(
       () => session.samplesByFace[CubeFace.front] = _samplesFor(CubeFace.front),
       throwsUnsupportedError,

@@ -89,6 +89,36 @@ void main() {
     );
   });
 
+  test('locked colors override classification and count as confirmed', () {
+    final samples = _solvedSamples();
+    samples[CubeFace.up]![0] = StickerSample(
+      rgb: RgbColor(0, 5, 0),
+      luminanceVariance: 0,
+    );
+
+    final result = classifier.classify(
+      samplesByFace: samples,
+      lockedFacesByFace: const {
+        CubeFace.up: {0: CubeFace.right},
+      },
+    );
+
+    expect(result.state.stickers[0], CubeFace.right);
+    expect(result.uncertainStickerIndices, isNot(contains(0)));
+    expect(
+      result.recognitionHints.any((hint) => hint.stickerIndex == 0),
+      isFalse,
+    );
+    expect(
+      result.issues.any(
+        (issue) =>
+            issue.code == 'poor-sample-quality' &&
+            issue.stickerIndices.contains(0),
+      ),
+      isFalse,
+    );
+  });
+
   test('rejects an incomplete six-face capture', () {
     final samples = _solvedSamples()..remove(CubeFace.back);
 
