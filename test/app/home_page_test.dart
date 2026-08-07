@@ -44,11 +44,15 @@ void main() {
     expect(find.text('sungamma@gmail.com'), findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.text('核心库：cuber 0.4.0（tiagohm/cuber，MIT License）。'),
+      find.text(
+        '核心库：cuber 0.4.0（tiagohm/cuber，MIT License）。'
+        '许可证全文见 LICENSES/cuber.txt。',
+      ),
       200,
       scrollable: find.byType(Scrollable).last,
     );
     expect(find.textContaining('cuber 0.4.0'), findsWidgets);
+    expect(find.textContaining('LICENSES/cuber.txt'), findsWidgets);
 
     await tester.scrollUntilVisible(
       find.text(

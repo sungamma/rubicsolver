@@ -97,7 +97,10 @@ class _AboutPageState extends State<AboutPage> {
                       '解法追求速度与稳定性，不保证数学意义上的最短步数。',
                     ),
                     const SizedBox(height: 8),
-                    const Text('核心库：cuber 0.4.0（tiagohm/cuber，MIT License）。'),
+                    const Text(
+                      '核心库：cuber 0.4.0（tiagohm/cuber，MIT License）。'
+                      '许可证全文见 LICENSES/cuber.txt。',
+                    ),
                   ],
                 ),
               ),
