@@ -86,27 +86,74 @@ void main() {
     expect(submitted, CubeState.solved());
   });
 
-  testWidgets(
-    'classification issues block solving until the face is rescanned',
-    (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CubeEditorPage(
-            initialState: CubeState.solved(),
-            classificationIssues: [
-              ClassificationIssue(
-                code: 'poor-sample-quality',
-                message: '部分贴纸采样质量较差。',
-              ),
-            ],
-          ),
+  testWidgets('confirmed recognition warnings allow a valid state to solve', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(
+          initialState: CubeState.solved(),
+          uncertainStickerIndices: const [0],
+          classificationIssues: [
+            ClassificationIssue(
+              code: 'poor-sample-quality',
+              message: '部分贴纸采样质量较差。',
+            ),
+          ],
         ),
-      );
+      ),
+    );
 
-      expect(_solveButton(tester).onPressed, isNull);
-      expect(find.textContaining('请重新扫描'), findsOneWidget);
-    },
-  );
+    expect(_solveButton(tester).onPressed, isNull);
+    expect(
+      find.byKey(const ValueKey('acknowledge-recognition-warnings')),
+      findsOneWidget,
+    );
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('acknowledge-recognition-warnings')),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('acknowledge-recognition-warnings')),
+    );
+    await tester.pump();
+
+    expect(_solveButton(tester).onPressed, isNotNull);
+    expect(find.text('已使用当前颜色，物理校验通过，可以开始求解。'), findsOneWidget);
+  });
+
+  testWidgets('warning acknowledgement never bypasses an invalid cube state', (
+    tester,
+  ) async {
+    final invalid = CubeState.solved().replaceSticker(0, CubeFace.front);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(
+          initialState: invalid,
+          uncertainStickerIndices: const [0],
+          classificationIssues: [
+            ClassificationIssue(
+              code: 'poor-sample-quality',
+              message: '部分贴纸采样质量较差。',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('acknowledge-recognition-warnings')),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('acknowledge-recognition-warnings')),
+    );
+    await tester.pump();
+
+    expect(_solveButton(tester).onPressed, isNull);
+    expect(find.textContaining('合法状态应为 9 枚'), findsWidgets);
+  });
 
   testWidgets('normalizes recognized center colors for consistent display', (
     tester,
@@ -152,7 +199,10 @@ void main() {
     );
 
     expect(_solveButton(tester).onPressed, isNull);
-    expect(find.textContaining('请逐一确认或修改'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('acknowledge-recognition-warnings')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('sticker-0')));
     await tester.pumpAndSettle();

@@ -46,6 +46,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
   late Set<int> _uncertainStickerIndices;
   late ValidationResult _validation;
   var _solving = false;
+  var _recognitionWarningsAcknowledged = false;
   var _solveGeneration = 0;
   String? _solveError;
 
@@ -112,6 +113,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
       }
       _recognitionHints.removeWhere((hint) => hint.stickerIndex == index);
       _uncertainStickerIndices.remove(index);
+      _recognitionWarningsAcknowledged = false;
       _solveError = null;
       _validate();
     });
@@ -122,8 +124,16 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
       _state = CubeState.solved();
       _recognitionHints = [];
       _uncertainStickerIndices = {};
+      _recognitionWarningsAcknowledged = false;
       _solveError = null;
       _validate();
+    });
+  }
+
+  void _acknowledgeRecognitionWarnings() {
+    setState(() {
+      _recognitionWarningsAcknowledged = true;
+      _solveError = null;
     });
   }
 
@@ -234,17 +244,18 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
   @override
   Widget build(BuildContext context) {
     final counts = _state.countByFace();
-    final highlighted = {
-      ..._uncertainStickerIndices,
-      ..._validation.suspectStickerIndices,
-    };
     final hasUnconfirmedStickers = _uncertainStickerIndices.any(
       (index) => index >= 0 && index < 54 && !_state.isCenterIndex(index),
     );
-    final canSolve =
-        _validation.isValid &&
-        widget.classificationIssues.isEmpty &&
-        !hasUnconfirmedStickers;
+    final hasRecognitionWarnings =
+        widget.classificationIssues.isNotEmpty || hasUnconfirmedStickers;
+    final recognitionWarningsConfirmed =
+        !hasRecognitionWarnings || _recognitionWarningsAcknowledged;
+    final highlighted = {
+      ..._validation.suspectStickerIndices,
+      if (!_recognitionWarningsAcknowledged) ..._uncertainStickerIndices,
+    };
+    final canSolve = _validation.isValid && recognitionWarningsConfirmed;
 
     final body = SafeArea(
       child: SingleChildScrollView(
@@ -282,10 +293,12 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                 ),
                 if (widget.classificationIssues.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  _MessageCard(
-                    icon: Icons.warning_amber_rounded,
-                    color: Theme.of(context).colorScheme.error,
-                    message: '扫描质量问题尚未解决，请重新扫描对应面后再求解。',
+                  _RecognitionWarningCard(
+                    acknowledged: _recognitionWarningsAcknowledged,
+                    uncertainCount: hasUnconfirmedStickers
+                        ? _uncertainStickerIndices.length
+                        : 0,
+                    onAcknowledge: _acknowledgeRecognitionWarnings,
                   ),
                   for (final issue in widget.classificationIssues)
                     _MessageCard(
@@ -293,6 +306,13 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                       color: Theme.of(context).colorScheme.tertiary,
                       message: issue.message,
                     ),
+                ] else if (hasUnconfirmedStickers) ...[
+                  const SizedBox(height: 16),
+                  _RecognitionWarningCard(
+                    acknowledged: _recognitionWarningsAcknowledged,
+                    uncertainCount: _uncertainStickerIndices.length,
+                    onAcknowledge: _acknowledgeRecognitionWarnings,
+                  ),
                 ],
                 if (_solveError != null) ...[
                   const SizedBox(height: 16),
@@ -303,17 +323,13 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                if (hasUnconfirmedStickers)
-                  _MessageCard(
-                    icon: Icons.help_outline,
-                    color: Theme.of(context).colorScheme.error,
-                    message: '仍有低置信度贴纸，请逐一确认或修改。',
-                  ),
                 if (canSolve)
                   _MessageCard(
                     icon: Icons.check_circle_outline,
                     color: Theme.of(context).colorScheme.primary,
-                    message: '状态合法，可以开始求解。',
+                    message: hasRecognitionWarnings
+                        ? '已使用当前颜色，物理校验通过，可以开始求解。'
+                        : '状态合法，可以开始求解。',
                   )
                 else if (!_validation.isValid)
                   for (final issue in _validation.issues)
@@ -361,6 +377,68 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
               ? () => unawaited(_startSolve())
               : null,
           child: const Text('开始求解'),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecognitionWarningCard extends StatelessWidget {
+  const _RecognitionWarningCard({
+    required this.acknowledged,
+    required this.uncertainCount,
+    required this.onAcknowledge,
+  });
+
+  final bool acknowledged;
+  final int uncertainCount;
+  final VoidCallback onAcknowledge;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      key: const ValueKey('recognition-warning-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  acknowledged
+                      ? Icons.check_circle_outline
+                      : Icons.help_outline,
+                  color: acknowledged
+                      ? colorScheme.primary
+                      : colorScheme.tertiary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    acknowledged
+                        ? '已使用当前颜色；后续只按魔方物理合法性判断。'
+                        : uncertainCount > 0
+                        ? '有 $uncertainCount 枚贴纸识别置信度较低。请核对颜色；这只是提醒，不会替代物理校验。'
+                        : '识别到图像质量提示。请核对颜色；这只是提醒，不会替代物理校验。',
+                  ),
+                ),
+              ],
+            ),
+            if (!acknowledged) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.tonal(
+                  key: const ValueKey('acknowledge-recognition-warnings'),
+                  onPressed: onAcknowledge,
+                  child: const Text('我已核对，使用当前颜色'),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
