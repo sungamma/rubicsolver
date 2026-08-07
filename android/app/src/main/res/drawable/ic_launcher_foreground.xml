@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- The dark body keeps the six colored sticker planes readable on both
+         legacy and adaptive launcher masks. -->
+    <path
+        android:fillColor="#081127"
+        android:pathData="M54,10 L94,33 L94,78 L54,101 L14,78 L14,33 Z" />
+
+    <!-- Upper face: white, yellow and blue stickers. -->
+    <path
+        android:fillColor="#F5F7FF"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M54,14 L66,21 L54,28 L42,21 Z" />
+    <path
+        android:fillColor="#F5C842"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M66,21 L78,28 L66,35 L54,28 Z" />
+    <path
+        android:fillColor="#3A86FF"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M42,21 L54,28 L42,35 L30,28 Z" />
+    <path
+        android:fillColor="#F5F7FF"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M54,28 L66,35 L54,42 L42,35 Z" />
+
+    <!-- Front face: green, orange and red stickers. -->
+    <path
+        android:fillColor="#2EBD67"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M18,36 L30,43 L30,56 L18,49 Z" />
+    <path
+        android:fillColor="#FF8A34"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M30,43 L42,50 L42,63 L30,56 Z" />
+    <path
+        android:fillColor="#E53935"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M42,50 L54,57 L54,70 L42,63 Z" />
+    <path
+        android:fillColor="#2EBD67"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M18,49 L30,56 L30,69 L18,62 Z" />
+    <path
+        android:fillColor="#FF8A34"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M30,56 L42,63 L42,76 L30,69 Z" />
+    <path
+        android:fillColor="#E53935"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M42,63 L54,70 L54,83 L42,76 Z" />
+
+    <!-- Right face completes the isometric cube silhouette. -->
+    <path
+        android:fillColor="#3A86FF"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M54,57 L66,50 L66,63 L54,70 Z" />
+    <path
+        android:fillColor="#F5C842"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M66,50 L78,43 L78,56 L66,63 Z" />
+    <path
+        android:fillColor="#F5F7FF"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M78,43 L90,36 L90,49 L78,56 Z" />
+    <path
+        android:fillColor="#3A86FF"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M54,70 L66,63 L66,76 L54,83 Z" />
+    <path
+        android:fillColor="#F5C842"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M66,63 L78,56 L78,69 L66,76 Z" />
+    <path
+        android:fillColor="#F5F7FF"
+        android:strokeColor="#081127"
+        android:strokeWidth="1.5"
+        android:pathData="M78,56 L90,49 L90,62 L78,69 Z" />
+</vector>
