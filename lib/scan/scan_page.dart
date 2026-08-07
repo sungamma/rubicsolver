@@ -49,148 +49,217 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   var _cameraGeneration = 0;
   var _openingEditor = false;
   var _editorRouteActive = false;
-  Future<void>? _lifecycleRelease;
-  Future<void>? _lifecycleResume;
+  var _lifecycleResumed = true;
+  var _disposed = false;
+  var _cameraRequestRevision = 0;
+  Future<void>? _cameraReconcileFuture;
+  ScanCameraController? _pendingController;
 
   @override
   void initState() {
     super.initState();
     _session = widget.session ?? ScanSession();
     WidgetsBinding.instance.addObserver(this);
-    unawaited(_initializeCamera());
+    _lifecycleResumed = _isAppResumed;
+    unawaited(_requestCameraReconcile());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused) {
-      unawaited(_releaseForLifecycle());
-    } else if (state == AppLifecycleState.resumed &&
-        !_editorRouteActive &&
-        !_session.isComplete &&
-        _controller == null &&
-        _lifecycleResume == null) {
-      unawaited(_resumeAfterLifecyclePause());
-    }
+    _lifecycleResumed = state == AppLifecycleState.resumed;
+    unawaited(_requestCameraReconcile());
   }
 
-  Future<void> _releaseForLifecycle() =>
-      _lifecycleRelease ??= _runLifecycleRelease();
-
-  Future<void> _runLifecycleRelease() async {
-    try {
-      await _releaseCamera();
-    } finally {
-      _lifecycleRelease = null;
-    }
+  bool get _isAppResumed {
+    final state = WidgetsBinding.instance.lifecycleState;
+    return state == null || state == AppLifecycleState.resumed;
   }
 
-  Future<void> _resumeAfterLifecyclePause() =>
-      _lifecycleResume ??= _runLifecycleResume();
+  bool get _shouldHaveCamera =>
+      mounted &&
+      !_disposed &&
+      _lifecycleResumed &&
+      !_editorRouteActive &&
+      !_session.isComplete &&
+      _previewSamples == null &&
+      _cameraError == null;
 
-  Future<void> _runLifecycleResume() async {
-    try {
-      final release = _lifecycleRelease;
-      if (release != null) {
-        await release;
-      }
-      if (!mounted ||
-          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-          _editorRouteActive ||
-          _session.isComplete ||
-          _controller != null) {
-        return;
-      }
-      await _initializeCamera();
-    } finally {
-      _lifecycleResume = null;
-    }
-  }
+  bool get _hasActiveCamera => _controller?.isInitialized == true;
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cameraGeneration++;
-    unawaited(_controller?.dispose());
-    super.dispose();
-  }
+  Future<void> _initializeCamera() => _requestCameraReconcile(clearError: true);
 
-  Future<void> _initializeCamera() async {
-    final generation = ++_cameraGeneration;
-    if (mounted) {
+  Future<void> _requestCameraReconcile({bool clearError = false}) {
+    if (clearError && mounted) {
       setState(() {
-        _loadingCamera = true;
         _cameraError = null;
+        _loadingCamera = true;
       });
     }
+    _cameraRequestRevision++;
+    final running = _cameraReconcileFuture;
+    if (running != null) {
+      return running;
+    }
 
+    final future = _runCameraReconcile();
+    _cameraReconcileFuture = future;
+    unawaited(
+      future.then<void>(
+        (_) => _finishCameraReconcile(future),
+        onError: (Object error, StackTrace stack) {
+          debugPrint('相机状态同步失败：$error');
+          _finishCameraReconcile(future);
+        },
+      ),
+    );
+    return future;
+  }
+
+  void _finishCameraReconcile(Future<void> future) {
+    if (!identical(_cameraReconcileFuture, future)) {
+      return;
+    }
+    _cameraReconcileFuture = null;
+    if (mounted &&
+        (_shouldHaveCamera != _hasActiveCamera ||
+            (_shouldHaveCamera && _cameraError == null && !_hasActiveCamera))) {
+      unawaited(_requestCameraReconcile());
+    }
+  }
+
+  Future<void> _runCameraReconcile() async {
+    while (mounted && !_disposed) {
+      final revision = _cameraRequestRevision;
+      final shouldHaveCamera = _shouldHaveCamera;
+      if (shouldHaveCamera) {
+        if (_hasActiveCamera) {
+          _setCameraLoading(false);
+        } else {
+          await _createCamera();
+        }
+      } else {
+        await _disposeActiveCamera();
+      }
+
+      if (revision == _cameraRequestRevision &&
+          _shouldHaveCamera == _hasActiveCamera) {
+        return;
+      }
+    }
+  }
+
+  void _setCameraLoading(bool loading) {
+    if (!mounted || _loadingCamera == loading) {
+      return;
+    }
+    setState(() => _loadingCamera = loading);
+  }
+
+  Future<void> _createCamera() async {
+    final generation = ++_cameraGeneration;
     ScanCameraController? nextController;
     try {
+      _setCameraLoading(true);
       final discover = widget.cameraDiscovery ?? availableCameras;
       final cameras = await discover();
-      if (!mounted || generation != _cameraGeneration) {
+      if (!mounted || generation != _cameraGeneration || !_shouldHaveCamera) {
         return;
       }
       if (cameras.isEmpty) {
-        setState(() {
-          _loadingCamera = false;
-          _cameraError = '未找到可用相机，请改用手动录入。';
-        });
+        _setCameraFailure('未找到可用相机，请改用手动录入。');
         return;
       }
 
       final description = _backCameraFrom(cameras);
       if (description == null) {
-        setState(() {
-          _loadingCamera = false;
-          _cameraError = '未找到后置相机，请改用手动录入。';
-        });
+        _setCameraFailure('未找到后置相机，请改用手动录入。');
         return;
       }
+
       final createCamera =
           widget.cameraFactory ?? PluginScanCameraController.new;
       nextController = createCamera(description);
+      _pendingController = nextController;
       await nextController.initialize();
+      _pendingController = null;
 
-      if (!mounted || generation != _cameraGeneration) {
-        await nextController.dispose();
+      if (!mounted || generation != _cameraGeneration || !_shouldHaveCamera) {
+        await _safeDispose(nextController);
         return;
       }
 
       final previous = _controller;
-      setState(() {
-        _controller = nextController;
-        _loadingCamera = false;
-      });
+      _controller = nextController;
       nextController = null;
-      await previous?.dispose();
+      _setCameraLoading(false);
+      if (previous != null) {
+        await _safeDispose(previous);
+      }
     } catch (error) {
-      await nextController?.dispose();
+      _pendingController = null;
+      if (nextController != null) {
+        await _safeDispose(nextController);
+      }
       if (!mounted || generation != _cameraGeneration) {
         return;
       }
-      setState(() {
-        _loadingCamera = false;
-        _cameraError = _cameraErrorMessage(error);
-      });
+      _setCameraFailure(_cameraErrorMessage(error));
     }
   }
 
-  Future<void> _releaseCamera() async {
-    _cameraGeneration++;
-    final controller = _controller;
-    if (controller == null) {
+  void _setCameraFailure(String message) {
+    if (!mounted) {
       return;
     }
-    if (mounted) {
-      setState(() {
-        _controller = null;
-        _loadingCamera = true;
-        _sampling = false;
-        _samplingError = null;
-      });
+    setState(() {
+      _loadingCamera = false;
+      _cameraError = message;
+    });
+  }
+
+  Future<bool> _safeDispose(ScanCameraController controller) async {
+    try {
+      await controller.dispose();
+      return true;
+    } catch (error) {
+      debugPrint('释放相机失败：$error');
+      if (mounted && !_disposed) {
+        _setCameraFailure('无法释放相机，请重试或改用手动录入。');
+      }
+      return false;
     }
-    await controller.dispose();
+  }
+
+  Future<void> _disposeActiveCamera() async {
+    _cameraGeneration++;
+    final controller = _controller;
+    _controller = null;
+    _sampling = false;
+    _samplingError = null;
+    if (mounted) {
+      setState(() => _loadingCamera = false);
+    }
+    if (controller != null) {
+      await _safeDispose(controller);
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
+    _cameraGeneration++;
+    final controller = _controller;
+    final pending = _pendingController;
+    _controller = null;
+    _pendingController = null;
+    if (controller != null) {
+      unawaited(_safeDispose(controller));
+    }
+    if (pending != null && !identical(pending, controller)) {
+      unawaited(_safeDispose(pending));
+    }
+    super.dispose();
   }
 
   Future<void> _capture() async {
@@ -250,14 +319,45 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       return;
     }
 
-    _session.acceptCurrent(samples);
+    if (samples.length != 9) {
+      if (mounted) {
+        setState(() {
+          _samplingError = '照片未得到完整的 9 个贴纸样本，请重拍此面。';
+        });
+      }
+      return;
+    }
+
+    try {
+      _session.acceptCurrent(samples);
+      setState(() {
+        _previewSamples = null;
+        _samplingError = null;
+      });
+      await _requestCameraReconcile(clearError: true);
+      if (_session.isComplete) {
+        await _openEditor();
+      }
+    } on ArgumentError catch (error) {
+      if (mounted) {
+        setState(() {
+          _samplingError = error.message?.toString() ?? '样本数量不完整，请重拍此面。';
+        });
+      }
+    }
+  }
+
+  Future<void> _retryPreview() async {
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _previewSamples = null;
       _samplingError = null;
+      _cameraError = null;
+      _loadingCamera = true;
     });
-    if (_session.isComplete) {
-      await _openEditor();
-    }
+    await _requestCameraReconcile(clearError: true);
   }
 
   Future<void> _openEditor() async {
@@ -267,39 +367,49 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     _openingEditor = true;
     _editorRouteActive = true;
     final result = _session.classify();
-    await _releaseCamera();
-    if (!mounted) {
-      _openingEditor = false;
-      return;
-    }
+    try {
+      await _requestCameraReconcile();
+      if (!mounted || _cameraError != null) {
+        return;
+      }
 
-    final rescanFace = await Navigator.of(context).push<CubeFace>(
-      MaterialPageRoute<CubeFace>(
-        builder: (editorContext) => CubeEditorPage(
-          initialState: result.state,
-          recognitionHints: result.recognitionHints,
-          uncertainStickerIndices: result.uncertainStickerIndices,
-          classificationIssues: result.issues,
-          centerColors: result.centerColors,
-          onRescanFace: (face) => Navigator.of(editorContext).pop(face),
+      final rescanFace = await Navigator.of(context).push<CubeFace>(
+        MaterialPageRoute<CubeFace>(
+          builder: (editorContext) => CubeEditorPage(
+            initialState: result.state,
+            recognitionHints: result.recognitionHints,
+            uncertainStickerIndices: result.uncertainStickerIndices,
+            classificationIssues: result.issues,
+            centerColors: result.centerColors,
+            onRescanFace: (face) => Navigator.of(editorContext).pop(face),
+          ),
         ),
-      ),
-    );
-    if (!mounted) {
-      return;
-    }
-    _editorRouteActive = false;
-    if (rescanFace != null) {
-      setState(() {
-        _session.restartFrom(rescanFace);
+      );
+      if (!mounted) {
+        return;
+      }
+      _editorRouteActive = false;
+      if (rescanFace != null) {
+        setState(() {
+          _session.restartFrom(rescanFace);
+          _openingEditor = false;
+          _cameraError = null;
+          _loadingCamera = true;
+        });
+        await _requestCameraReconcile(clearError: true);
+      } else {
+        setState(() {
+          _openingEditor = false;
+          _loadingCamera = false;
+        });
+        _cameraRequestRevision++;
+      }
+    } catch (error) {
+      if (mounted) {
+        _editorRouteActive = false;
         _openingEditor = false;
-      });
-      await _initializeCamera();
-    } else {
-      setState(() {
-        _openingEditor = false;
-        _loadingCamera = false;
-      });
+        _setCameraFailure('无法打开校验页，请重试或改用手动录入。');
+      }
     }
   }
 
@@ -311,16 +421,19 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       _session.restartFrom(CubeFace.up);
       _previewSamples = null;
       _cameraError = null;
+      _editorRouteActive = false;
+      _loadingCamera = true;
     });
-    await _releaseCamera();
+    await _requestCameraReconcile(clearError: true);
+  }
+
+  Future<void> _openManualEntry() async {
+    _editorRouteActive = true;
+    await _requestCameraReconcile();
     if (!mounted) {
       return;
     }
-    await _initializeCamera();
-  }
-
-  void _openManualEntry() {
-    Navigator.of(context).pushReplacement(
+    await Navigator.of(context).pushReplacement<void, void>(
       MaterialPageRoute<void>(
         builder: (_) => CubeEditorPage(initialState: CubeState.solved()),
       ),
@@ -348,8 +461,23 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     if (_cameraError != null) {
       return _CameraFallback(
         message: _cameraError!,
-        onRetry: _initializeCamera,
-        onManualEntry: _openManualEntry,
+        onRetry: () => unawaited(_initializeCamera()),
+        onManualEntry: () => unawaited(_openManualEntry()),
+      );
+    }
+    if (_session.isComplete) {
+      return _CompletedScan(
+        onReview: _openEditor,
+        onRestart: () => unawaited(_restartScan()),
+      );
+    }
+    final samples = _previewSamples;
+    if (samples != null) {
+      return _SamplePreview(
+        face: _session.currentFace!,
+        samples: samples,
+        onRetry: () => unawaited(_retryPreview()),
+        onAccept: _acceptPreview,
       );
     }
     if (_loadingCamera) {
@@ -364,31 +492,15 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         ),
       );
     }
-    if (_session.isComplete) {
-      return _CompletedScan(
-        onReview: _openEditor,
-        onRestart: () => unawaited(_restartScan()),
-      );
-    }
-    final samples = _previewSamples;
-    if (samples != null) {
-      return _SamplePreview(
-        face: _session.currentFace!,
-        samples: samples,
-        onRetry: () => setState(() {
-          _previewSamples = null;
-          _samplingError = null;
-        }),
-        onAccept: _acceptPreview,
-      );
-    }
 
     final controller = _controller;
-    if (controller == null || !controller.isInitialized) {
+    if (controller == null ||
+        !controller.isInitialized ||
+        controller.previewSize == null) {
       return _CameraFallback(
         message: '相机尚未就绪，请重试或改用手动录入。',
-        onRetry: _initializeCamera,
-        onManualEntry: _openManualEntry,
+        onRetry: () => unawaited(_initializeCamera()),
+        onManualEntry: () => unawaited(_openManualEntry()),
       );
     }
     return _CaptureGuide(

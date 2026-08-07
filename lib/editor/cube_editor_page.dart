@@ -96,12 +96,14 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
         ),
       ),
     );
-    if (!mounted || selected == null || selected == _state.stickers[index]) {
+    if (!mounted || selected == null) {
       return;
     }
 
     setState(() {
-      _state = _state.replaceSticker(index, selected);
+      if (selected != _state.stickers[index]) {
+        _state = _state.replaceSticker(index, selected);
+      }
       _recognitionHints.removeWhere((hint) => hint.stickerIndex == index);
       _uncertainStickerIndices.remove(index);
       _validate();
@@ -174,6 +176,13 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
       ..._uncertainStickerIndices,
       ..._validation.suspectStickerIndices,
     };
+    final hasUnconfirmedStickers = _uncertainStickerIndices.any(
+      (index) => index >= 0 && index < 54 && !_state.isCenterIndex(index),
+    );
+    final canSolve =
+        _validation.isValid &&
+        widget.classificationIssues.isEmpty &&
+        !hasUnconfirmedStickers;
 
     return Scaffold(
       appBar: AppBar(
@@ -235,8 +244,13 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                       ),
                   ],
                   const SizedBox(height: 16),
-                  if (_validation.isValid &&
-                      widget.classificationIssues.isEmpty)
+                  if (hasUnconfirmedStickers)
+                    _MessageCard(
+                      icon: Icons.help_outline,
+                      color: Theme.of(context).colorScheme.error,
+                      message: '仍有低置信度贴纸，请逐一确认或修改。',
+                    ),
+                  if (canSolve)
                     _MessageCard(
                       icon: Icons.check_circle_outline,
                       color: Theme.of(context).colorScheme.primary,
@@ -266,9 +280,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: FilledButton(
-          onPressed: _validation.isValid && widget.classificationIssues.isEmpty
-              ? _startSolve
-              : null,
+          onPressed: canSolve ? _startSolve : null,
           child: const Text('开始求解'),
         ),
       ),

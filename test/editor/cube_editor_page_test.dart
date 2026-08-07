@@ -132,6 +132,30 @@ void main() {
     );
     expect(avatar.backgroundColor, const Color.fromARGB(255, 12, 34, 56));
   });
+
+  testWidgets('uncertain sticker blocks solving until its color is confirmed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(
+          initialState: CubeState.solved(),
+          uncertainStickerIndices: const [0],
+        ),
+      ),
+    );
+
+    expect(_solveButton(tester).onPressed, isNull);
+    expect(find.textContaining('请逐一确认或修改'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('sticker-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('上面颜色').last);
+    await tester.pumpAndSettle();
+
+    expect(_solveButton(tester).onPressed, isNotNull);
+    expect(find.text('状态合法，可以开始求解。'), findsOneWidget);
+  });
 }
 
 Widget _testApp(CubeState state) {
