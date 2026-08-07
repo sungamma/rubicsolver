@@ -1,38 +1,8 @@
 import '../cube/cube_face.dart';
 
 /// One face turn in standard Singmaster notation.
-///
-/// The const constructor keeps move lists usable as compile-time constants for
-/// the playback widgets.  It performs a debug assertion for malformed input;
-/// callers that need a regular [ArgumentError] should use [parse].
 class SolutionMove {
-  const SolutionMove(this.notation)
-    : assert(
-        notation == 'U' ||
-            notation == 'U2' ||
-            notation == "U'" ||
-            notation == 'R' ||
-            notation == 'R2' ||
-            notation == "R'" ||
-            notation == 'F' ||
-            notation == 'F2' ||
-            notation == "F'" ||
-            notation == 'D' ||
-            notation == 'D2' ||
-            notation == "D'" ||
-            notation == 'L' ||
-            notation == 'L2' ||
-            notation == "L'" ||
-            notation == 'B' ||
-            notation == 'B2' ||
-            notation == "B'",
-        'Move must use standard notation such as R, R\', or R2.',
-      );
-
-  /// Parses and validates a move, throwing [ArgumentError] for malformed
-  /// notation.  This is useful for user-entered algorithms where assertions
-  /// may be disabled.
-  factory SolutionMove.parse(String notation) {
+  factory SolutionMove(String notation) {
     if (!_notationPattern.hasMatch(notation)) {
       throw ArgumentError.value(
         notation,
@@ -40,8 +10,15 @@ class SolutionMove {
         '动作必须使用标准记号，例如 R、R\' 或 R2',
       );
     }
-    return SolutionMove(notation);
+    return SolutionMove._(notation);
   }
+
+  const SolutionMove._(this.notation);
+
+  /// Parses and validates a move, throwing [ArgumentError] for malformed
+  /// notation.  This is useful for user-entered algorithms where assertions
+  /// may be disabled.
+  factory SolutionMove.parse(String notation) => SolutionMove(notation);
 
   /// Alias for [parse] when constructing from external text.
   factory SolutionMove.fromNotation(String notation) =>

@@ -68,7 +68,7 @@ class MovePlayer extends ChangeNotifier {
       _currentIndex < _moves.length ? _moves[_currentIndex] : null;
 
   /// Face highlighted by the current action.
-  CubeFace? get currentFace => currentMove?.face;
+  CubeFace? get currentFace => isComplete ? null : currentMove?.face;
 
   /// Whether every solution move has been applied.
   bool get isComplete => _currentIndex == _moves.length;

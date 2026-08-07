@@ -12,12 +12,16 @@ class CubeNet extends StatelessWidget {
     this.onStickerTap,
     this.highlightedStickerIndices = const [],
     this.centerColors = const {},
+    this.highlightColor,
+    this.showCenterLocks = true,
   });
 
   final CubeState state;
   final ValueChanged<int>? onStickerTap;
   final Iterable<int> highlightedStickerIndices;
   final Map<CubeFace, RgbColor> centerColors;
+  final Color? highlightColor;
+  final bool showCenterLocks;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +41,8 @@ class CubeNet extends StatelessWidget {
                     highlightedIndices: highlighted,
                     centerColors: centerColors,
                     onStickerTap: onStickerTap,
+                    highlightColor: highlightColor,
+                    showCenterLocks: showCenterLocks,
                   ),
                 ),
                 const Spacer(flex: 2),
@@ -59,6 +65,8 @@ class CubeNet extends StatelessWidget {
                       highlightedIndices: highlighted,
                       centerColors: centerColors,
                       onStickerTap: onStickerTap,
+                      highlightColor: highlightColor,
+                      showCenterLocks: showCenterLocks,
                     ),
                   ),
               ],
@@ -75,6 +83,8 @@ class CubeNet extends StatelessWidget {
                     highlightedIndices: highlighted,
                     centerColors: centerColors,
                     onStickerTap: onStickerTap,
+                    highlightColor: highlightColor,
+                    showCenterLocks: showCenterLocks,
                   ),
                 ),
                 const Spacer(flex: 2),
@@ -94,6 +104,8 @@ class _FaceGrid extends StatelessWidget {
     required this.highlightedIndices,
     required this.centerColors,
     required this.onStickerTap,
+    required this.highlightColor,
+    required this.showCenterLocks,
   });
 
   final CubeFace face;
@@ -101,6 +113,8 @@ class _FaceGrid extends StatelessWidget {
   final Set<int> highlightedIndices;
   final Map<CubeFace, RgbColor> centerColors;
   final ValueChanged<int>? onStickerTap;
+  final Color? highlightColor;
+  final bool showCenterLocks;
 
   @override
   Widget build(BuildContext context) {
@@ -118,7 +132,7 @@ class _FaceGrid extends StatelessWidget {
         final stickerFace = state.stickers[stickerIndex];
         final isCenter = localIndex == 4;
         final borderColor = highlightedIndices.contains(stickerIndex)
-            ? Theme.of(context).colorScheme.error
+            ? highlightColor ?? Theme.of(context).colorScheme.error
             : Theme.of(context).colorScheme.outline;
 
         return Material(
@@ -142,7 +156,7 @@ class _FaceGrid extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                if (isCenter)
+                if (isCenter && showCenterLocks)
                   Icon(
                     Icons.lock_outline,
                     size: 15,

@@ -46,6 +46,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
   late Set<int> _uncertainStickerIndices;
   late ValidationResult _validation;
   var _solving = false;
+  var _solveGeneration = 0;
   String? _solveError;
 
   @override
@@ -171,27 +172,29 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
     if (_solving) {
       return;
     }
+    final solveState = _state;
+    final generation = ++_solveGeneration;
     setState(() {
       _solving = true;
       _solveError = null;
     });
     try {
-      final moves = await widget.solver.solve(_state);
-      if (!mounted) {
+      final moves = await widget.solver.solve(solveState);
+      if (!mounted || generation != _solveGeneration) {
         return;
       }
       setState(() => _solving = false);
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (_) => SolutionPage(
-            initialState: _state,
+            initialState: solveState,
             moves: moves,
             centerColors: widget.centerColors,
           ),
         ),
       );
     } on InvalidCubeException catch (error) {
-      if (!mounted) {
+      if (!mounted || generation != _solveGeneration) {
         return;
       }
       setState(() {
@@ -199,7 +202,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
         _solveError = error.message;
       });
     } on SolveTimeoutException {
-      if (!mounted) {
+      if (!mounted || generation != _solveGeneration) {
         return;
       }
       setState(() {
@@ -207,7 +210,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
         _solveError = '求解超时，请稍后重试或返回检查。';
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || generation != _solveGeneration) {
         return;
       }
       setState(() {
@@ -215,6 +218,17 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
         _solveError = '求解失败：$error';
       });
     }
+  }
+
+  void _cancelSolve() {
+    if (!_solving) {
+      return;
+    }
+    _solveGeneration++;
+    setState(() {
+      _solving = false;
+      _solveError = '已取消求解。';
+    });
   }
 
   @override
@@ -329,13 +343,16 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
         actions: [
           IconButton(
             tooltip: '重置为复原状态',
-            onPressed: _resetSolved,
+            onPressed: _solving ? null : _resetSolved,
             icon: const Icon(Icons.restart_alt),
           ),
         ],
       ),
       body: Stack(
-        children: [body, if (_solving) const _SolveProgressOverlay()],
+        children: [
+          body,
+          if (_solving) _SolveProgressOverlay(onCancel: _cancelSolve),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -380,15 +397,19 @@ class _MessageCard extends StatelessWidget {
 }
 
 class _SolveProgressOverlay extends StatelessWidget {
-  const _SolveProgressOverlay();
+  const _SolveProgressOverlay({required this.onCancel});
+
+  final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
-      child: AbsorbPointer(
-        child: ColoredBox(
-          color: Colors.black26,
-          child: Center(
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: ModalBarrier(dismissible: false, color: Colors.black26),
+          ),
+          Center(
             child: Card(
               margin: const EdgeInsets.all(24),
               child: Padding(
@@ -398,18 +419,20 @@ class _SolveProgressOverlay extends StatelessWidget {
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('正在求解…'),
-                    SizedBox(height: 4),
-                    Text('请保持页面打开，求解在本机后台运行。'),
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    const Text('正在求解…'),
+                    const SizedBox(height: 4),
+                    const Text('请保持页面打开，求解在本机后台运行。'),
+                    const SizedBox(height: 12),
+                    TextButton(onPressed: onCancel, child: const Text('取消求解')),
                   ],
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

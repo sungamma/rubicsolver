@@ -9,7 +9,7 @@ void main() {
     final initial = CubeSolver.applyAlgorithm(CubeState.solved(), 'R U');
     final player = MovePlayer(
       initial: initial,
-      moves: const [SolutionMove("U'"), SolutionMove("R'")],
+      moves: [SolutionMove("U'"), SolutionMove("R'")],
     );
 
     player.seek(2);
@@ -25,7 +25,7 @@ void main() {
   test('next and seek clamp to the available solution steps', () {
     final player = MovePlayer(
       initial: CubeState.solved(),
-      moves: const [SolutionMove('R')],
+      moves: [SolutionMove('R')],
     );
     var notifications = 0;
     player.addListener(() => notifications++);
@@ -45,7 +45,7 @@ void main() {
   test('speed accepts the supported playback intervals', () {
     final player = MovePlayer(
       initial: CubeState.solved(),
-      moves: const [SolutionMove('R')],
+      moves: [SolutionMove('R')],
     );
 
     player.speed = const Duration(milliseconds: 500);
@@ -56,5 +56,46 @@ void main() {
       () => player.speed = const Duration(milliseconds: 100),
       throwsArgumentError,
     );
+  });
+
+  testWidgets('play advances on schedule and pauses at the end', (
+    tester,
+  ) async {
+    final player = MovePlayer(
+      initial: CubeState.solved(),
+      moves: [SolutionMove('R'), SolutionMove("R'")],
+      speed: const Duration(milliseconds: 500),
+    );
+    addTearDown(player.dispose);
+
+    player.play();
+    expect(player.isPlaying, isTrue);
+
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(player.currentIndex, 1);
+    expect(player.isPlaying, isTrue);
+
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(player.currentIndex, 2);
+    expect(player.isComplete, isTrue);
+    expect(player.isPlaying, isFalse);
+  });
+
+  testWidgets('dispose cancels the playback timer', (tester) async {
+    final player = MovePlayer(
+      initial: CubeState.solved(),
+      moves: [SolutionMove('R'), SolutionMove("R'")],
+      speed: const Duration(milliseconds: 500),
+    );
+    var notifications = 0;
+    player.addListener(() => notifications++);
+
+    player.play();
+    final beforeDispose = notifications;
+    player.dispose();
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(player.isPlaying, isFalse);
+    expect(notifications, beforeDispose);
   });
 }

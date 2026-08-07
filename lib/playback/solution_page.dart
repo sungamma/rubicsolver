@@ -96,6 +96,8 @@ class _SolutionPageState extends State<SolutionPage> {
                         state: _player.currentState,
                         centerColors: widget.centerColors,
                         highlightedStickerIndices: _highlightedIndices,
+                        highlightColor: Theme.of(context).colorScheme.primary,
+                        showCenterLocks: false,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -149,7 +151,11 @@ class _SolutionPageState extends State<SolutionPage> {
         child: Row(
           children: [
             CircleAvatar(
-              child: Icon(move == null ? Icons.check : Icons.rotate_right),
+              child: Icon(
+                move == null || _player.isComplete
+                    ? Icons.check
+                    : Icons.rotate_right,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -185,6 +191,9 @@ class _SolutionPageState extends State<SolutionPage> {
           children: [
             Expanded(
               child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                ),
                 onPressed: _player.currentIndex == 0 ? null : _player.previous,
                 icon: const Icon(Icons.skip_previous),
                 label: const Text('上一步'),
@@ -193,6 +202,9 @@ class _SolutionPageState extends State<SolutionPage> {
             const SizedBox(width: 8),
             Expanded(
               child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                ),
                 onPressed: _player.moves.isEmpty ? null : _player.togglePlay,
                 icon: Icon(_player.isPlaying ? Icons.pause : Icons.play_arrow),
                 label: Text(_player.isPlaying ? '暂停' : '播放'),
@@ -201,6 +213,9 @@ class _SolutionPageState extends State<SolutionPage> {
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                ),
                 onPressed: _player.isComplete ? null : _player.next,
                 icon: const Icon(Icons.skip_next),
                 label: const Text('下一步'),
@@ -304,15 +319,15 @@ class _MoveChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final completed = index < currentIndex;
     final current = index == currentIndex - 1;
+    final completed = index < currentIndex - 1;
     final scheme = Theme.of(context).colorScheme;
     return ActionChip(
       onPressed: onPressed,
-      backgroundColor: completed
-          ? scheme.secondaryContainer
-          : current
+      backgroundColor: current
           ? scheme.primaryContainer
+          : completed
+          ? scheme.secondaryContainer
           : scheme.surfaceContainerHighest,
       side: current
           ? BorderSide(color: scheme.primary, width: 2)
@@ -320,10 +335,10 @@ class _MoveChip extends StatelessWidget {
       label: Text(
         move.notation,
         style: TextStyle(
-          color: completed
-              ? scheme.onSecondaryContainer
-              : current
+          color: current
               ? scheme.onPrimaryContainer
+              : completed
+              ? scheme.onSecondaryContainer
               : scheme.onSurfaceVariant,
           fontWeight: current ? FontWeight.bold : null,
         ),

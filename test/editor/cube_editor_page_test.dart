@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/editor/cube_editor_page.dart';
+import 'package:rubicsolver/playback/solution_page.dart';
 import 'package:rubicsolver/solver/cube_solver.dart';
 import 'package:rubicsolver/solver/solution_move.dart';
 import 'package:rubicsolver/scan/color_classifier.dart';
@@ -164,7 +167,7 @@ void main() {
       MaterialApp(
         home: CubeEditorPage(
           initialState: CubeState.solved(),
-          solver: _FakeCubeSolver(const [SolutionMove('R')]),
+          solver: _FakeCubeSolver([SolutionMove('R')]),
         ),
       ),
     );
@@ -174,6 +177,70 @@ void main() {
 
     expect(find.text('解法演示'), findsOneWidget);
     expect(find.byKey(const ValueKey('solution-move-0')), findsOneWidget);
+  });
+
+  testWidgets('solve result keeps the state snapshot used by the solver', (
+    tester,
+  ) async {
+    final initial = CubeSolver.applyAlgorithm(CubeState.solved(), 'R');
+    final solver = _ControllableCubeSolver();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(initialState: initial, solver: solver),
+      ),
+    );
+
+    await tester.tap(find.text('开始求解'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('重置为复原状态'));
+    await tester.pump();
+    solver.complete([SolutionMove("R'")]);
+    await tester.pumpAndSettle();
+
+    final page = tester.widget<SolutionPage>(find.byType(SolutionPage));
+    expect(page.initialState, initial);
+  });
+
+  testWidgets('reset is disabled while a solve is running', (tester) async {
+    final solver = _ControllableCubeSolver();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(initialState: CubeState.solved(), solver: solver),
+      ),
+    );
+
+    await tester.tap(find.text('开始求解'));
+    await tester.pump();
+
+    final reset = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.restart_alt),
+    );
+    expect(reset.onPressed, isNull);
+
+    solver.complete([]);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('cancelled solve result is ignored', (tester) async {
+    final solver = _ControllableCubeSolver();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(initialState: CubeState.solved(), solver: solver),
+      ),
+    );
+
+    await tester.tap(find.text('开始求解'));
+    await tester.pump();
+    await tester.tap(find.text('取消求解'));
+    await tester.pump();
+
+    expect(find.text('正在求解…'), findsNothing);
+    expect(find.text('已取消求解。'), findsOneWidget);
+    expect(_solveButton(tester).onPressed, isNotNull);
+
+    solver.complete([]);
+    await tester.pumpAndSettle();
+    expect(find.byType(SolutionPage), findsNothing);
   });
 }
 
@@ -196,4 +263,17 @@ class _FakeCubeSolver extends CubeSolver {
     int? maxDepth,
     Duration? timeout,
   }) async => result;
+}
+
+class _ControllableCubeSolver extends CubeSolver {
+  final _result = Completer<List<SolutionMove>>();
+
+  @override
+  Future<List<SolutionMove>> solve(
+    CubeState state, {
+    int? maxDepth,
+    Duration? timeout,
+  }) => _result.future;
+
+  void complete(List<SolutionMove> moves) => _result.complete(moves);
 }

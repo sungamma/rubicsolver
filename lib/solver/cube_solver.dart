@@ -111,12 +111,10 @@ class CubeSolver {
       return List.unmodifiable(await override(state));
     }
 
+    final facelets = state.toFacelets();
+    final timeoutMicros = effectiveTimeout.inMicroseconds;
     final algorithm = await Isolate.run<String?>(
-      () => _solveFaceletsInIsolate(
-        state.toFacelets(),
-        effectiveDepth,
-        effectiveTimeout.inMicroseconds,
-      ),
+      () => _solveFaceletsInIsolate(facelets, effectiveDepth, timeoutMicros),
     );
 
     if (algorithm == null) {

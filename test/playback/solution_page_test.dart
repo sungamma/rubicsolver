@@ -12,7 +12,7 @@ void main() {
       MaterialApp(
         home: SolutionPage(
           initialState: CubeState.solved(),
-          moves: const [SolutionMove('R'), SolutionMove("U'")],
+          moves: [SolutionMove('R'), SolutionMove("U'")],
         ),
       ),
     );
@@ -36,7 +36,7 @@ void main() {
       MaterialApp(
         home: SolutionPage(
           initialState: CubeState.solved(),
-          moves: const [SolutionMove('R'), SolutionMove("U'")],
+          moves: [SolutionMove('R'), SolutionMove("U'")],
         ),
       ),
     );
@@ -53,5 +53,111 @@ void main() {
     await tester.tap(find.text('暂停'));
     await tester.pump();
     expect(find.text('播放'), findsOneWidget);
+  });
+
+  testWidgets('current formula chip uses the primary color treatment', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R'), SolutionMove("U'")],
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('下一步'));
+    await tester.tap(find.text('下一步'));
+    await tester.pump();
+
+    final chip = tester.widget<ActionChip>(
+      find.descendant(
+        of: find.byKey(const ValueKey('solution-move-0')),
+        matching: find.byType(ActionChip),
+      ),
+    );
+    final scheme = Theme.of(
+      tester.element(find.byType(SolutionPage)),
+    ).colorScheme;
+    expect(chip.backgroundColor, scheme.primaryContainer);
+  });
+
+  testWidgets('playback net uses action styling without editor locks', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R'), SolutionMove('U')],
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.lock_outline), findsNothing);
+    await tester.ensureVisible(find.text('下一步'));
+    await tester.tap(find.text('下一步'));
+    await tester.pump();
+
+    final material = tester.widget<Material>(
+      find.byKey(const ValueKey('sticker-9')),
+    );
+    final shape = material.shape! as RoundedRectangleBorder;
+    final scheme = Theme.of(
+      tester.element(find.byType(SolutionPage)),
+    ).colorScheme;
+    expect(shape.side.color, scheme.primary);
+    expect(shape.side.width, 3);
+  });
+
+  testWidgets('completed playback clears action highlighting and shows check', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R')],
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('下一步'));
+    await tester.tap(find.text('下一步'));
+    await tester.pump();
+
+    expect(find.text('复原完成'), findsOneWidget);
+    expect(find.byIcon(Icons.rotate_right), findsNothing);
+    expect(find.byIcon(Icons.check), findsOneWidget);
+    final material = tester.widget<Material>(
+      find.byKey(const ValueKey('sticker-9')),
+    );
+    final shape = material.shape! as RoundedRectangleBorder;
+    expect(shape.side.width, 1);
+  });
+
+  testWidgets('320dp playback controls keep Chinese labels on one line', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R'), SolutionMove('U')],
+        ),
+      ),
+    );
+    await tester.ensureVisible(find.text('上一步'));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.text('上一步')).height, lessThan(25));
+    expect(tester.getSize(find.text('下一步')).height, lessThan(25));
   });
 }

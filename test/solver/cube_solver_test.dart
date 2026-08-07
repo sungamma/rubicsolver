@@ -7,7 +7,7 @@ import 'package:rubicsolver/solver/solution_move.dart';
 void main() {
   group('SolutionMove', () {
     test('parses standard notation and describes the turn', () {
-      const move = SolutionMove("R'");
+      final move = SolutionMove("R'");
 
       expect(move.notation, "R'");
       expect(move.face, CubeFace.right);
@@ -17,10 +17,11 @@ void main() {
     });
 
     test('supports double turns and rejects non-standard notation', () {
-      const move = SolutionMove('F2');
+      final move = SolutionMove('F2');
 
       expect(move.turns, 2);
       expect(move.instruction, '正对前面看，转动 180°');
+      expect(() => SolutionMove('R3'), throwsArgumentError);
       expect(() => SolutionMove.parse('r'), throwsArgumentError);
       expect(() => SolutionMove.parse('R3'), throwsArgumentError);
       expect(() => SolutionMove.parse("R2'"), throwsArgumentError);
@@ -43,7 +44,7 @@ void main() {
 
     test('applies a list of solution moves without mutating the input', () {
       final initial = CubeState.solved();
-      final moves = const [SolutionMove('R'), SolutionMove('U2')];
+      final moves = [SolutionMove('R'), SolutionMove('U2')];
 
       final updated = CubeSolver.applyMoves(initial, moves);
 
@@ -89,6 +90,15 @@ void main() {
       final moves = await const CubeSolver().solve(CubeState.solved());
 
       expect(moves, isEmpty);
+    });
+
+    test('solution solves a single face turn', () async {
+      final scrambled = CubeSolver.applyAlgorithm(CubeState.solved(), 'R');
+
+      final moves = await const CubeSolver().solve(scrambled);
+
+      expect(CubeSolver.applyMoves(scrambled, moves), CubeState.solved());
+      expect(moves, isNotEmpty);
     });
 
     test('solution solves a short scramble', () async {
