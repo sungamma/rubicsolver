@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../cube/cube_face.dart';
 import '../cube/cube_state.dart';
-import '../editor/cube_net.dart';
 import '../scan/color_math.dart';
 import '../solver/solution_move.dart';
+import 'cube_3d_view.dart';
 import 'move_player.dart';
 
 /// Result page for a solver run.  The formula remains visible while the
-/// two-dimensional net reflects the state at the selected step.
+/// three-dimensional cube reflects the state at the selected step.
 class SolutionPage extends StatefulWidget {
   SolutionPage({
     super.key,
@@ -92,12 +92,11 @@ class _SolutionPageState extends State<SolutionPage> {
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      child: CubeNet(
+                      child: Cube3DView(
                         state: _player.currentState,
-                        centerColors: widget.centerColors,
-                        highlightedStickerIndices: _highlightedIndices,
-                        highlightColor: Theme.of(context).colorScheme.primary,
-                        showCenterLocks: false,
+                        move: _player.currentFace == null
+                            ? null
+                            : _player.currentMove,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -290,16 +289,6 @@ class _SolutionPageState extends State<SolutionPage> {
         ),
       ],
     );
-  }
-
-  Iterable<int> get _highlightedIndices {
-    final face = _player.currentFace;
-    if (face == null) {
-      return const <int>[];
-    }
-    return [
-      for (var offset = 0; offset < 9; offset++) face.startIndex + offset,
-    ];
   }
 }
 

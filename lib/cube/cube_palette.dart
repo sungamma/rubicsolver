@@ -16,12 +16,12 @@ abstract final class CubePalette {
 
   static Color colorFor(CubeFace face) {
     return switch (face) {
-      CubeFace.up => const Color(0xFFF7F7F2),
-      CubeFace.right => const Color(0xFFE53935),
-      CubeFace.front => const Color(0xFF22A447),
-      CubeFace.down => const Color(0xFFFFD600),
-      CubeFace.left => const Color(0xFFFB8C00),
-      CubeFace.back => const Color(0xFF1976D2),
+      CubeFace.up => const Color(0xFFFFFFFF),
+      CubeFace.right => const Color(0xFFB71234),
+      CubeFace.front => const Color(0xFF009B48),
+      CubeFace.down => const Color(0xFFFFD500),
+      CubeFace.left => const Color(0xFFFF5800),
+      CubeFace.back => const Color(0xFF0046AD),
     };
   }
 

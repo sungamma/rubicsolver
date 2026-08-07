@@ -20,4 +20,13 @@ void main() {
     expect(colors.every((color) => color.a == 1), isTrue);
     expect(CubePalette.foregroundFor(CubeFace.down), Colors.black);
   });
+
+  test('uses calibrated competition cube display colors', () {
+    expect(CubePalette.colorFor(CubeFace.up), const Color(0xFFFFFFFF));
+    expect(CubePalette.colorFor(CubeFace.right), const Color(0xFFB71234));
+    expect(CubePalette.colorFor(CubeFace.front), const Color(0xFF009B48));
+    expect(CubePalette.colorFor(CubeFace.down), const Color(0xFFFFD500));
+    expect(CubePalette.colorFor(CubeFace.left), const Color(0xFFFF5800));
+    expect(CubePalette.colorFor(CubeFace.back), const Color(0xFF0046AD));
+  });
 }

@@ -8,21 +8,10 @@ abstract final class CubeDisplayColors {
   static Color colorFor(
     CubeFace face, {
     Map<CubeFace, RgbColor> centerColors = const {},
-  }) {
-    final rgb = centerColors[face];
-    return rgb == null
-        ? CubePalette.colorFor(face)
-        : Color.fromARGB(255, rgb.r, rgb.g, rgb.b);
-  }
+  }) => CubePalette.colorFor(face);
 
   static Color foregroundFor(
     CubeFace face, {
     Map<CubeFace, RgbColor> centerColors = const {},
-  }) {
-    final rgb = centerColors[face];
-    if (rgb == null) {
-      return CubePalette.foregroundFor(face);
-    }
-    return rgb.relativeLuminance > 0.45 ? Colors.black : Colors.white;
-  }
+  }) => CubePalette.foregroundFor(face);
 }

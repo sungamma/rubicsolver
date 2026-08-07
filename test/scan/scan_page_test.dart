@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
+import 'package:rubicsolver/scan/camera_frame_sampler.dart';
 import 'package:rubicsolver/scan/color_math.dart';
 import 'package:rubicsolver/scan/scan_camera.dart';
 import 'package:rubicsolver/scan/scan_page.dart';
@@ -69,6 +70,51 @@ void main() {
     expect(find.textContaining('白色'), findsNothing);
     expect(find.byIcon(Icons.flash_off), findsNothing);
     expect(find.byIcon(Icons.flash_on), findsNothing);
+  });
+
+  testWidgets('shows recognized colors directly over the camera preview', (
+    tester,
+  ) async {
+    final controllers = <_FakeScanCameraController>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanPage(
+          cameraDiscovery: () async => const [_backCamera],
+          cameraFactory: (description) {
+            final controller = _FakeScanCameraController(
+              description,
+              picture: XFile.fromData(
+                Uint8List.fromList([1, 2, 3]),
+                name: 'capture.jpg',
+              ),
+            );
+            controllers.add(controller);
+            return controller;
+          },
+          sampleLiveFrame: (_) => _samplesFor(CubeFace.up),
+          sampleInBackground: (_) async => _samplesFor(CubeFace.up),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final controller = controllers.single;
+    expect(controller.isStreamingImages, isTrue);
+    controller.emitFrame(_emptyFrame());
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('live-recognition-grid')), findsOneWidget);
+    for (var index = 0; index < 9; index++) {
+      expect(find.byKey(ValueKey('live-recognition-$index')), findsOneWidget);
+    }
+    expect(find.text('白'), findsNWidgets(9));
+
+    await tester.tap(find.text('拍摄此面'));
+    await tester.pumpAndSettle();
+
+    expect(controller.stopStreamCalls, 1);
+    expect(find.text('接受此面'), findsOneWidget);
+    expect(find.text('白色'), findsNWidgets(9));
   });
 
   testWidgets('completed review stays camera-free and rescan opens camera', (
@@ -428,12 +474,17 @@ class _FakeScanCameraController implements ScanCameraController {
   var _initialized = false;
   var disposeStarted = false;
   var disposed = false;
+  ValueChanged<ScanCameraFrame>? _frameListener;
+  var stopStreamCalls = 0;
 
   @override
   bool get isInitialized => _initialized;
 
   @override
   bool get isTakingPicture => false;
+
+  @override
+  bool get isStreamingImages => _frameListener != null;
 
   @override
   Size? get previewSize => const Size(300, 400);
@@ -450,6 +501,7 @@ class _FakeScanCameraController implements ScanCameraController {
     }
     disposed = true;
     _initialized = false;
+    _frameListener = null;
   }
 
   @override
@@ -470,7 +522,35 @@ class _FakeScanCameraController implements ScanCameraController {
   Future<XFile> takePicture() => picture == null
       ? throw UnsupportedError('not used')
       : Future.value(picture);
+
+  @override
+  Future<void> startImageStream(ValueChanged<ScanCameraFrame> onFrame) async {
+    _frameListener = onFrame;
+  }
+
+  @override
+  Future<void> stopImageStream() async {
+    if (_frameListener != null) {
+      stopStreamCalls++;
+      _frameListener = null;
+    }
+  }
+
+  void emitFrame(ScanCameraFrame frame) => _frameListener?.call(frame);
 }
+
+ScanCameraFrame _emptyFrame() => ScanCameraFrame(
+  width: 1,
+  height: 1,
+  format: ScanCameraPixelFormat.bgra8888,
+  planes: [
+    ScanCameraPlane(
+      bytes: Uint8List.fromList([0, 0, 0, 255]),
+      bytesPerRow: 4,
+      bytesPerPixel: 4,
+    ),
+  ],
+);
 
 List<StickerSample> _samplesFor(CubeFace face) {
   final colors = {

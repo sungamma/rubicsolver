@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
+import 'package:rubicsolver/cube/cube_palette.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/editor/cube_editor_page.dart';
 import 'package:rubicsolver/playback/solution_page.dart';
@@ -107,7 +108,7 @@ void main() {
     },
   );
 
-  testWidgets('uses recognized center colors for stickers and color choices', (
+  testWidgets('normalizes recognized center colors for consistent display', (
     tester,
   ) async {
     final centerColors = {
@@ -126,7 +127,7 @@ void main() {
     final sticker = tester.widget<Material>(
       find.byKey(const ValueKey('sticker-0')),
     );
-    expect(sticker.color, const Color.fromARGB(255, 12, 34, 56));
+    expect(sticker.color, CubePalette.colorFor(CubeFace.up));
 
     await tester.tap(find.byKey(const ValueKey('sticker-0')));
     await tester.pumpAndSettle();
@@ -135,7 +136,7 @@ void main() {
     final avatar = tester.widget<CircleAvatar>(
       find.descendant(of: upOption, matching: find.byType(CircleAvatar)),
     );
-    expect(avatar.backgroundColor, const Color.fromARGB(255, 12, 34, 56));
+    expect(avatar.backgroundColor, CubePalette.colorFor(CubeFace.up));
   });
 
   testWidgets('uncertain sticker blocks solving until its color is confirmed', (

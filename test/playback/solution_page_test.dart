@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
+import 'package:rubicsolver/playback/cube_3d_view.dart';
 import 'package:rubicsolver/playback/solution_page.dart';
 import 'package:rubicsolver/solver/solution_move.dart';
 
@@ -83,9 +85,7 @@ void main() {
     expect(chip.backgroundColor, scheme.primaryContainer);
   });
 
-  testWidgets('playback net uses action styling without editor locks', (
-    tester,
-  ) async {
+  testWidgets('playback uses a three-dimensional cube canvas', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: SolutionPage(
@@ -95,20 +95,18 @@ void main() {
       ),
     );
 
-    expect(find.byIcon(Icons.lock_outline), findsNothing);
+    expect(find.byType(Cube3DView), findsOneWidget);
+    expect(find.byKey(const ValueKey('sticker-0')), findsNothing);
     await tester.ensureVisible(find.text('下一步'));
     await tester.tap(find.text('下一步'));
     await tester.pump();
 
-    final material = tester.widget<Material>(
-      find.byKey(const ValueKey('sticker-9')),
+    final canvas = tester.widget<CustomPaint>(
+      find.byKey(const ValueKey('cube-3d-canvas')),
     );
-    final shape = material.shape! as RoundedRectangleBorder;
-    final scheme = Theme.of(
-      tester.element(find.byType(SolutionPage)),
-    ).colorScheme;
-    expect(shape.side.color, scheme.primary);
-    expect(shape.side.width, 3);
+    final painter = canvas.painter! as Cube3DPainter;
+    expect(painter.state, isNot(CubeState.solved()));
+    expect(painter.activeFace, CubeFace.right);
   });
 
   testWidgets('completed playback clears action highlighting and shows check', (
@@ -130,11 +128,11 @@ void main() {
     expect(find.text('复原完成'), findsOneWidget);
     expect(find.byIcon(Icons.rotate_right), findsNothing);
     expect(find.byIcon(Icons.check), findsOneWidget);
-    final material = tester.widget<Material>(
-      find.byKey(const ValueKey('sticker-9')),
+    final canvas = tester.widget<CustomPaint>(
+      find.byKey(const ValueKey('cube-3d-canvas')),
     );
-    final shape = material.shape! as RoundedRectangleBorder;
-    expect(shape.side.width, 1);
+    final painter = canvas.painter! as Cube3DPainter;
+    expect(painter.activeFace, isNull);
   });
 
   testWidgets('320dp playback controls keep Chinese labels on one line', (

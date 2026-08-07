@@ -5,17 +5,21 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../cube/cube_face.dart';
+import '../cube/cube_palette.dart';
 import '../cube/cube_state.dart';
 import '../editor/cube_editor_page.dart';
+import 'camera_frame_sampler.dart';
 import 'face_sampler.dart';
 import 'scan_camera.dart';
 import 'scan_preview_geometry.dart';
+import 'scan_preview_classifier.dart';
 import 'scan_session.dart';
 import 'sticker_sample.dart';
 
 typedef CameraDiscovery = Future<List<CameraDescription>> Function();
 typedef BackgroundFaceSampler =
     Future<List<StickerSample>> Function(Uint8List bytes);
+typedef LiveFrameSampler = List<StickerSample> Function(ScanCameraFrame frame);
 
 class ScanPage extends StatefulWidget {
   const ScanPage({
@@ -24,6 +28,7 @@ class ScanPage extends StatefulWidget {
     this.cameraFactory,
     this.faceSampler = const FaceSampler(),
     this.sampleInBackground,
+    this.sampleLiveFrame,
     this.session,
   });
 
@@ -31,6 +36,7 @@ class ScanPage extends StatefulWidget {
   final ScanCameraFactory? cameraFactory;
   final FaceSampler faceSampler;
   final BackgroundFaceSampler? sampleInBackground;
+  final LiveFrameSampler? sampleLiveFrame;
   final ScanSession? session;
 
   @override
@@ -42,6 +48,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
 
   ScanCameraController? _controller;
   List<StickerSample>? _previewSamples;
+  List<StickerSample>? _liveSamples;
   String? _cameraError;
   String? _samplingError;
   var _loadingCamera = true;
@@ -51,6 +58,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   var _editorRouteActive = false;
   var _lifecycleResumed = true;
   var _disposed = false;
+  var _handlingLiveFrame = false;
+  DateTime? _lastLiveFrameAt;
   var _cameraRequestRevision = 0;
   Future<void>? _cameraReconcileFuture;
   ScanCameraController? _pendingController;
@@ -134,6 +143,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       if (shouldHaveCamera) {
         if (_hasActiveCamera) {
           _setCameraLoading(false);
+          await _ensureLiveRecognition(_controller!, _cameraGeneration);
         } else {
           await _createCamera();
         }
@@ -190,11 +200,13 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
 
       final previous = _controller;
       _controller = nextController;
+      final activeController = nextController;
       nextController = null;
       _setCameraLoading(false);
       if (previous != null) {
         await _safeDispose(previous);
       }
+      await _ensureLiveRecognition(activeController, generation);
     } catch (error) {
       _pendingController = null;
       if (nextController != null) {
@@ -217,6 +229,65 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _ensureLiveRecognition(
+    ScanCameraController controller,
+    int generation,
+  ) async {
+    if (!_isCurrentCapture(controller, generation) ||
+        controller.isStreamingImages ||
+        _previewSamples != null) {
+      return;
+    }
+    try {
+      await controller.startImageStream(
+        (frame) => _handleLiveFrame(controller, generation, frame),
+      );
+    } catch (error) {
+      debugPrint('启动实时颜色识别失败：$error');
+      if (_isCurrentCapture(controller, generation) && mounted) {
+        setState(() => _samplingError = '实时识别暂不可用，仍可拍摄此面。');
+      }
+    }
+  }
+
+  void _handleLiveFrame(
+    ScanCameraController controller,
+    int generation,
+    ScanCameraFrame frame,
+  ) {
+    if (!_isCurrentCapture(controller, generation) ||
+        _sampling ||
+        _handlingLiveFrame ||
+        _previewSamples != null) {
+      return;
+    }
+    final now = DateTime.now();
+    final lastFrameAt = _lastLiveFrameAt;
+    if (lastFrameAt != null &&
+        now.difference(lastFrameAt) < const Duration(milliseconds: 250)) {
+      return;
+    }
+
+    _handlingLiveFrame = true;
+    _lastLiveFrameAt = now;
+    try {
+      final sample =
+          widget.sampleLiveFrame ??
+          CameraFrameSampler(
+            cropFraction: widget.faceSampler.cropFraction,
+          ).sample;
+      final samples = sample(frame);
+      if (samples.length != 9 || !_isCurrentCapture(controller, generation)) {
+        return;
+      }
+      setState(() => _liveSamples = List.unmodifiable(samples));
+    } catch (error) {
+      debugPrint('实时颜色取样失败：$error');
+    } finally {
+      _handlingLiveFrame = false;
+    }
+  }
+
   Future<bool> _safeDispose(ScanCameraController controller) async {
     try {
       await controller.dispose();
@@ -236,6 +307,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     _controller = null;
     _sampling = false;
     _samplingError = null;
+    _liveSamples = null;
+    _lastLiveFrameAt = null;
     if (mounted) {
       setState(() => _loadingCamera = false);
     }
@@ -277,6 +350,10 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       _samplingError = null;
     });
     try {
+      await controller.stopImageStream();
+      if (!_isCurrentCapture(controller, generation)) {
+        return;
+      }
       final photo = await controller.takePicture();
       if (!_isCurrentCapture(controller, generation)) {
         return;
@@ -304,6 +381,9 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     } finally {
       if (_isCurrentCapture(controller, generation)) {
         setState(() => _sampling = false);
+        if (_previewSamples == null) {
+          unawaited(_ensureLiveRecognition(controller, generation));
+        }
       }
     }
   }
@@ -332,6 +412,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       _session.acceptCurrent(samples);
       setState(() {
         _previewSamples = null;
+        _liveSamples = null;
+        _lastLiveFrameAt = null;
         _samplingError = null;
       });
       await _requestCameraReconcile(clearError: true);
@@ -353,6 +435,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     }
     setState(() {
       _previewSamples = null;
+      _liveSamples = null;
+      _lastLiveFrameAt = null;
       _samplingError = null;
       _cameraError = null;
       _loadingCamera = true;
@@ -420,6 +504,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     setState(() {
       _session.restartFrom(CubeFace.up);
       _previewSamples = null;
+      _liveSamples = null;
+      _lastLiveFrameAt = null;
       _cameraError = null;
       _editorRouteActive = false;
       _loadingCamera = true;
@@ -473,9 +559,15 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     }
     final samples = _previewSamples;
     if (samples != null) {
+      final face = _session.currentFace!;
       return _SamplePreview(
-        face: _session.currentFace!,
+        face: face,
         samples: samples,
+        recognizedFaces: const ScanPreviewClassifier().classify(
+          samples: samples,
+          currentFace: face,
+          capturedSamplesByFace: _session.samplesByFace,
+        ),
         onRetry: () => unawaited(_retryPreview()),
         onAccept: _acceptPreview,
       );
@@ -508,6 +600,14 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       face: _session.currentFace!,
       completedFaceCount: _session.completedFaceCount,
       cropFraction: widget.faceSampler.cropFraction,
+      liveSamples: _liveSamples,
+      recognizedFaces: _liveSamples == null
+          ? null
+          : const ScanPreviewClassifier().classify(
+              samples: _liveSamples!,
+              currentFace: _session.currentFace!,
+              capturedSamplesByFace: _session.samplesByFace,
+            ),
       sampling: _sampling,
       samplingError: _samplingError,
       onCapture: _capture,
@@ -521,6 +621,8 @@ class _CaptureGuide extends StatelessWidget {
     required this.face,
     required this.completedFaceCount,
     required this.cropFraction,
+    required this.liveSamples,
+    required this.recognizedFaces,
     required this.sampling,
     required this.samplingError,
     required this.onCapture,
@@ -530,6 +632,8 @@ class _CaptureGuide extends StatelessWidget {
   final CubeFace face;
   final int completedFaceCount;
   final double cropFraction;
+  final List<StickerSample>? liveSamples;
+  final List<CubeFace>? recognizedFaces;
   final bool sampling;
   final String? samplingError;
   final VoidCallback onCapture;
@@ -566,6 +670,14 @@ class _CaptureGuide extends StatelessWidget {
                           painter: _GridGuidePainter(cropFraction),
                         ),
                       ),
+                      if (liveSamples != null && recognizedFaces != null)
+                        IgnorePointer(
+                          child: _LiveRecognitionGrid(
+                            samples: liveSamples!,
+                            faces: recognizedFaces!,
+                            cropFraction: cropFraction,
+                          ),
+                        ),
                       if (sampling)
                         const ColoredBox(
                           color: Color(0x66000000),
@@ -600,16 +712,78 @@ class _CaptureGuide extends StatelessWidget {
   }
 }
 
+class _LiveRecognitionGrid extends StatelessWidget {
+  const _LiveRecognitionGrid({
+    required this.samples,
+    required this.faces,
+    required this.cropFraction,
+  });
+
+  final List<StickerSample> samples;
+  final List<CubeFace> faces;
+  final double cropFraction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: FractionallySizedBox(
+        widthFactor: cropFraction,
+        heightFactor: cropFraction,
+        child: GridView.builder(
+          key: const ValueKey('live-recognition-grid'),
+          padding: EdgeInsets.zero,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+          ),
+          itemCount: 9,
+          itemBuilder: (context, index) {
+            final face = faces[index];
+            final lowQuality = samples[index].isLowQuality;
+            return Container(
+              key: ValueKey('live-recognition-$index'),
+              margin: const EdgeInsets.all(3),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: CubePalette.colorFor(face).withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(
+                  color: lowQuality
+                      ? Theme.of(context).colorScheme.error
+                      : Colors.white.withValues(alpha: 0.9),
+                  width: lowQuality ? 3 : 1.5,
+                ),
+              ),
+              child: Text(
+                CubePalette.nameFor(face).substring(0, 1),
+                style: TextStyle(
+                  color: CubePalette.foregroundFor(face),
+                  fontWeight: FontWeight.w800,
+                  shadows: const [
+                    Shadow(color: Color(0x55000000), blurRadius: 2),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 class _SamplePreview extends StatelessWidget {
   const _SamplePreview({
     required this.face,
     required this.samples,
+    required this.recognizedFaces,
     required this.onRetry,
     required this.onAccept,
   });
 
   final CubeFace face;
   final List<StickerSample> samples;
+  final List<CubeFace> recognizedFaces;
   final VoidCallback onRetry;
   final VoidCallback onAccept;
 
@@ -638,14 +812,10 @@ class _SamplePreview extends StatelessWidget {
                   itemCount: samples.length,
                   itemBuilder: (context, index) {
                     final sample = samples[index];
+                    final recognizedFace = recognizedFaces[index];
                     return DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Color.fromARGB(
-                          255,
-                          sample.rgb.r,
-                          sample.rgb.g,
-                          sample.rgb.b,
-                        ),
+                        color: CubePalette.colorFor(recognizedFace),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: sample.isLowQuality
@@ -654,9 +824,26 @@ class _SamplePreview extends StatelessWidget {
                           width: sample.isLowQuality ? 3 : 1,
                         ),
                       ),
-                      child: sample.isLowQuality
-                          ? const Icon(Icons.warning_amber_rounded)
-                          : null,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Text(
+                            CubePalette.nameFor(recognizedFace),
+                            style: TextStyle(
+                              color: CubePalette.foregroundFor(recognizedFace),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (sample.isLowQuality)
+                            const Align(
+                              alignment: Alignment.topRight,
+                              child: Padding(
+                                padding: EdgeInsets.all(4),
+                                child: Icon(Icons.warning_amber_rounded),
+                              ),
+                            ),
+                        ],
+                      ),
                     );
                   },
                 ),
