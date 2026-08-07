@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -49,6 +50,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   ScanCameraController? _controller;
   List<StickerSample>? _previewSamples;
   List<StickerSample>? _liveSamples;
+  final Map<int, CubeFace> _lockedPreviewFaces = {};
   String? _cameraError;
   String? _samplingError;
   var _loadingCamera = true;
@@ -288,6 +290,36 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     }
   }
 
+  void _togglePreviewColorLock(int index, CubeFace face) {
+    setState(() {
+      if (_lockedPreviewFaces.containsKey(index)) {
+        _lockedPreviewFaces.remove(index);
+      } else {
+        _lockedPreviewFaces[index] = face;
+      }
+    });
+  }
+
+  void _toggleAllPreviewColorLocks(List<CubeFace> faces) {
+    setState(() {
+      if (_lockedPreviewFaces.length == faces.length) {
+        _lockedPreviewFaces.clear();
+        return;
+      }
+      _lockedPreviewFaces
+        ..clear()
+        ..addEntries(
+          faces.indexed.map((entry) => MapEntry(entry.$1, entry.$2)),
+        );
+    });
+  }
+
+  List<CubeFace> _applyPreviewColorLocks(List<CubeFace> faces) =>
+      List<CubeFace>.unmodifiable([
+        for (var index = 0; index < faces.length; index++)
+          _lockedPreviewFaces[index] ?? faces[index],
+      ]);
+
   Future<bool> _safeDispose(ScanCameraController controller) async {
     try {
       await controller.dispose();
@@ -409,10 +441,14 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     }
 
     try {
-      _session.acceptCurrent(samples);
+      _session.acceptCurrent(
+        samples,
+        lockedFaces: Map<int, CubeFace>.unmodifiable(_lockedPreviewFaces),
+      );
       setState(() {
         _previewSamples = null;
         _liveSamples = null;
+        _lockedPreviewFaces.clear();
         _lastLiveFrameAt = null;
         _samplingError = null;
       });
@@ -436,6 +472,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     setState(() {
       _previewSamples = null;
       _liveSamples = null;
+      _lockedPreviewFaces.clear();
       _lastLiveFrameAt = null;
       _samplingError = null;
       _cameraError = null;
@@ -476,6 +513,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       if (rescanFace != null) {
         setState(() {
           _session.restartFrom(rescanFace);
+          _lockedPreviewFaces.clear();
           _openingEditor = false;
           _cameraError = null;
           _loadingCamera = true;
@@ -505,6 +543,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       _session.restartFrom(CubeFace.up);
       _previewSamples = null;
       _liveSamples = null;
+      _lockedPreviewFaces.clear();
       _lastLiveFrameAt = null;
       _cameraError = null;
       _editorRouteActive = false;
@@ -560,14 +599,18 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     final samples = _previewSamples;
     if (samples != null) {
       final face = _session.currentFace!;
-      return _SamplePreview(
-        face: face,
-        samples: samples,
-        recognizedFaces: const ScanPreviewClassifier().classify(
+      final recognizedFaces = _applyPreviewColorLocks(
+        const ScanPreviewClassifier().classify(
           samples: samples,
           currentFace: face,
           capturedSamplesByFace: _session.samplesByFace,
         ),
+      );
+      return _SamplePreview(
+        face: face,
+        samples: samples,
+        recognizedFaces: recognizedFaces,
+        lockedFaces: _lockedPreviewFaces,
         onRetry: () => unawaited(_retryPreview()),
         onAccept: _acceptPreview,
       );
@@ -595,21 +638,30 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         onManualEntry: () => unawaited(_openManualEntry()),
       );
     }
+    final liveRecognizedFaces = _liveSamples == null
+        ? null
+        : _applyPreviewColorLocks(
+            const ScanPreviewClassifier().classify(
+              samples: _liveSamples!,
+              currentFace: _session.currentFace!,
+              capturedSamplesByFace: _session.samplesByFace,
+            ),
+          );
     return _CaptureGuide(
       controller: controller,
       face: _session.currentFace!,
       completedFaceCount: _session.completedFaceCount,
       cropFraction: widget.faceSampler.cropFraction,
       liveSamples: _liveSamples,
-      recognizedFaces: _liveSamples == null
-          ? null
-          : const ScanPreviewClassifier().classify(
-              samples: _liveSamples!,
-              currentFace: _session.currentFace!,
-              capturedSamplesByFace: _session.samplesByFace,
-            ),
+      recognizedFaces: liveRecognizedFaces,
+      lockedFaces: _lockedPreviewFaces,
       sampling: _sampling,
       samplingError: _samplingError,
+      onToggleColorLock: (index) =>
+          _togglePreviewColorLock(index, liveRecognizedFaces![index]),
+      onToggleAllColorLocks: liveRecognizedFaces == null
+          ? null
+          : () => _toggleAllPreviewColorLocks(liveRecognizedFaces),
       onCapture: _capture,
     );
   }
@@ -623,8 +675,11 @@ class _CaptureGuide extends StatelessWidget {
     required this.cropFraction,
     required this.liveSamples,
     required this.recognizedFaces,
+    required this.lockedFaces,
     required this.sampling,
     required this.samplingError,
+    required this.onToggleColorLock,
+    required this.onToggleAllColorLocks,
     required this.onCapture,
   });
 
@@ -634,8 +689,11 @@ class _CaptureGuide extends StatelessWidget {
   final double cropFraction;
   final List<StickerSample>? liveSamples;
   final List<CubeFace>? recognizedFaces;
+  final Map<int, CubeFace> lockedFaces;
   final bool sampling;
   final String? samplingError;
+  final ValueChanged<int> onToggleColorLock;
+  final VoidCallback? onToggleAllColorLocks;
   final VoidCallback onCapture;
 
   @override
@@ -651,43 +709,50 @@ class _CaptureGuide extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: AspectRatio(
-                aspectRatio: 1,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ColoredBox(
-                        color: Colors.black,
-                        child: _CoverCameraPreview(controller: controller),
-                      ),
-                      IgnorePointer(
-                        child: CustomPaint(
-                          painter: _GridGuidePainter(cropFraction),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final dimension = math
+                  .max(
+                    0,
+                    math.min(constraints.maxWidth - 32, constraints.maxHeight),
+                  )
+                  .toDouble();
+              return Center(
+                child: SizedBox.square(
+                  dimension: dimension,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ColoredBox(
+                          color: Colors.black,
+                          child: _CoverCameraPreview(controller: controller),
                         ),
-                      ),
-                      if (liveSamples != null && recognizedFaces != null)
                         IgnorePointer(
-                          child: _LiveRecognitionGrid(
-                            samples: liveSamples!,
-                            faces: recognizedFaces!,
-                            cropFraction: cropFraction,
+                          child: CustomPaint(
+                            painter: _GridGuidePainter(cropFraction),
                           ),
                         ),
-                      if (sampling)
-                        const ColoredBox(
-                          color: Color(0x66000000),
-                          child: Center(child: CircularProgressIndicator()),
-                        ),
-                    ],
+                        if (liveSamples != null && recognizedFaces != null)
+                          _LiveRecognitionGrid(
+                            samples: liveSamples!,
+                            faces: recognizedFaces!,
+                            lockedFaces: lockedFaces,
+                            cropFraction: cropFraction,
+                            onToggleColorLock: onToggleColorLock,
+                          ),
+                        if (sampling)
+                          const ColoredBox(
+                            color: Color(0x66000000),
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
         if (samplingError != null)
@@ -699,6 +764,32 @@ class _CaptureGuide extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  recognizedFaces == null
+                      ? '等待识别颜色；识别后可点击单格锁定。'
+                      : '点击九格可锁定颜色，拍照后仍会保留。',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                key: const ValueKey('lock-current-colors'),
+                onPressed: sampling ? null : onToggleAllColorLocks,
+                icon: Icon(
+                  lockedFaces.length == 9
+                      ? Icons.lock_open_rounded
+                      : Icons.lock_outline_rounded,
+                ),
+                label: Text(lockedFaces.length == 9 ? '全部解锁' : '锁定九格'),
+              ),
+            ],
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.all(16),
           child: FilledButton.icon(
@@ -716,12 +807,16 @@ class _LiveRecognitionGrid extends StatelessWidget {
   const _LiveRecognitionGrid({
     required this.samples,
     required this.faces,
+    required this.lockedFaces,
     required this.cropFraction,
+    required this.onToggleColorLock,
   });
 
   final List<StickerSample> samples;
   final List<CubeFace> faces;
+  final Map<int, CubeFace> lockedFaces;
   final double cropFraction;
+  final ValueChanged<int> onToggleColorLock;
 
   @override
   Widget build(BuildContext context) {
@@ -740,27 +835,74 @@ class _LiveRecognitionGrid extends StatelessWidget {
           itemBuilder: (context, index) {
             final face = faces[index];
             final lowQuality = samples[index].isLowQuality;
-            return Container(
-              key: ValueKey('live-recognition-$index'),
-              margin: const EdgeInsets.all(3),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: CubePalette.colorFor(face).withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(7),
-                border: Border.all(
-                  color: lowQuality
-                      ? Theme.of(context).colorScheme.error
-                      : Colors.white.withValues(alpha: 0.9),
-                  width: lowQuality ? 3 : 1.5,
+            final locked = lockedFaces.containsKey(index);
+            final color = CubePalette.colorFor(face);
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onToggleColorLock(index),
+              child: Container(
+                key: ValueKey('live-recognition-$index'),
+                margin: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(color: color, width: locked ? 3 : 2),
                 ),
-              ),
-              child: Text(
-                CubePalette.nameFor(face).substring(0, 1),
-                style: TextStyle(
-                  color: CubePalette.foregroundFor(face),
-                  fontWeight: FontWeight.w800,
-                  shadows: const [
-                    Shadow(color: Color(0x55000000), blurRadius: 2),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: 5,
+                      right: 5,
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x44000000), blurRadius: 2),
+                          ],
+                        ),
+                        child: Text(
+                          CubePalette.nameFor(face).substring(0, 1),
+                          style: TextStyle(
+                            color: CubePalette.foregroundFor(face),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (locked)
+                      Positioned(
+                        key: ValueKey('locked-recognition-$index'),
+                        left: 5,
+                        bottom: 5,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Padding(
+                            padding: EdgeInsets.all(3),
+                            child: Icon(Icons.lock_rounded, size: 13),
+                          ),
+                        ),
+                      ),
+                    if (lowQuality && !locked)
+                      const Positioned(
+                        left: 5,
+                        bottom: 5,
+                        child: Icon(
+                          Icons.warning_amber_rounded,
+                          size: 17,
+                          color: Colors.amber,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -777,6 +919,7 @@ class _SamplePreview extends StatelessWidget {
     required this.face,
     required this.samples,
     required this.recognizedFaces,
+    required this.lockedFaces,
     required this.onRetry,
     required this.onAccept,
   });
@@ -784,6 +927,7 @@ class _SamplePreview extends StatelessWidget {
   final CubeFace face;
   final List<StickerSample> samples;
   final List<CubeFace> recognizedFaces;
+  final Map<int, CubeFace> lockedFaces;
   final VoidCallback onRetry;
   final VoidCallback onAccept;
 
@@ -840,6 +984,15 @@ class _SamplePreview extends StatelessWidget {
                               child: Padding(
                                 padding: EdgeInsets.all(4),
                                 child: Icon(Icons.warning_amber_rounded),
+                              ),
+                            ),
+                          if (lockedFaces.containsKey(index))
+                            Align(
+                              key: ValueKey('locked-preview-$index'),
+                              alignment: Alignment.bottomRight,
+                              child: const Padding(
+                                padding: EdgeInsets.all(5),
+                                child: Icon(Icons.lock_rounded, size: 18),
                               ),
                             ),
                         ],

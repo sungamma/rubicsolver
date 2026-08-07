@@ -76,6 +76,7 @@ void main() {
     tester,
   ) async {
     final controllers = <_FakeScanCameraController>[];
+    final session = ScanSession();
     await tester.pumpWidget(
       MaterialApp(
         home: ScanPage(
@@ -93,6 +94,7 @@ void main() {
           },
           sampleLiveFrame: (_) => _samplesFor(CubeFace.up),
           sampleInBackground: (_) async => _samplesFor(CubeFace.up),
+          session: session,
         ),
       ),
     );
@@ -108,6 +110,17 @@ void main() {
       expect(find.byKey(ValueKey('live-recognition-$index')), findsOneWidget);
     }
     expect(find.text('白'), findsNWidgets(9));
+    final firstCell = tester.widget<Container>(
+      find.byKey(const ValueKey('live-recognition-0')),
+    );
+    final decoration = firstCell.decoration! as BoxDecoration;
+    expect(decoration.color!.a, lessThanOrEqualTo(0.12));
+    expect(find.byKey(const ValueKey('lock-current-colors')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('live-recognition-0')));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('locked-recognition-0')), findsOneWidget);
 
     await tester.tap(find.text('拍摄此面'));
     await tester.pumpAndSettle();
@@ -115,6 +128,14 @@ void main() {
     expect(controller.stopStreamCalls, 1);
     expect(find.text('接受此面'), findsOneWidget);
     expect(find.text('白色'), findsNWidgets(9));
+    expect(find.byKey(const ValueKey('locked-preview-0')), findsOneWidget);
+
+    await tester.ensureVisible(find.text('接受此面'));
+    await tester.pump();
+    await tester.tap(find.text('接受此面'));
+    await tester.pumpAndSettle();
+
+    expect(session.lockedFacesByFace[CubeFace.up]![0], CubeFace.up);
   });
 
   testWidgets('completed review stays camera-free and rescan opens camera', (
