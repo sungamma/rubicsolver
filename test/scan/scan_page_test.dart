@@ -145,6 +145,102 @@ void main() {
     expect(find.text('六个面已采集完成'), findsOneWidget);
   });
 
+  testWidgets('starting over from a completed scan reinitializes the camera', (
+    tester,
+  ) async {
+    final controllers = <_FakeScanCameraController>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanPage(
+          cameraDiscovery: () async => const [_backCamera],
+          cameraFactory: (description) {
+            final controller = _FakeScanCameraController(description);
+            controllers.add(controller);
+            return controller;
+          },
+          session: _completedSession(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('从头扫描'));
+    await tester.pumpAndSettle();
+
+    expect(controllers, hasLength(2));
+    expect(controllers.last.isInitialized, isTrue);
+    expect(find.text('扫描 U 面'), findsOneWidget);
+  });
+
+  testWidgets('does not reopen the camera while the editor route is active', (
+    tester,
+  ) async {
+    final controllers = <_FakeScanCameraController>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanPage(
+          cameraDiscovery: () async => const [_backCamera],
+          cameraFactory: (description) {
+            final controller = _FakeScanCameraController(description);
+            controllers.add(controller);
+            return controller;
+          },
+          session: _completedSession(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('查看校验结果'));
+    await tester.pumpAndSettle();
+    expect(find.text('校验与纠错'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+
+    expect(controllers, hasLength(1));
+  });
+
+  testWidgets('serializes disposal before one resumed camera initialization', (
+    tester,
+  ) async {
+    final disposeGate = Completer<void>();
+    final controllers = <_FakeScanCameraController>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanPage(
+          cameraDiscovery: () async => const [_backCamera],
+          cameraFactory: (description) {
+            final controller = _FakeScanCameraController(
+              description,
+              disposeGate: controllers.isEmpty ? disposeGate.future : null,
+            );
+            controllers.add(controller);
+            return controller;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(controllers.single.disposeStarted, isTrue);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    expect(controllers, hasLength(1));
+
+    disposeGate.complete();
+    await tester.pumpAndSettle();
+
+    expect(controllers, hasLength(2));
+    expect(controllers.last.isInitialized, isTrue);
+  });
+
   testWidgets('ignores a capture result from a released camera generation', (
     tester,
   ) async {

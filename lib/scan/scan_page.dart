@@ -48,6 +48,9 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   var _sampling = false;
   var _cameraGeneration = 0;
   var _openingEditor = false;
+  var _editorRouteActive = false;
+  Future<void>? _lifecycleRelease;
+  Future<void>? _lifecycleResume;
 
   @override
   void initState() {
@@ -61,9 +64,46 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      unawaited(_releaseCamera());
-    } else if (state == AppLifecycleState.resumed && _controller == null) {
-      unawaited(_initializeCamera());
+      unawaited(_releaseForLifecycle());
+    } else if (state == AppLifecycleState.resumed &&
+        !_editorRouteActive &&
+        !_session.isComplete &&
+        _controller == null &&
+        _lifecycleResume == null) {
+      unawaited(_resumeAfterLifecyclePause());
+    }
+  }
+
+  Future<void> _releaseForLifecycle() =>
+      _lifecycleRelease ??= _runLifecycleRelease();
+
+  Future<void> _runLifecycleRelease() async {
+    try {
+      await _releaseCamera();
+    } finally {
+      _lifecycleRelease = null;
+    }
+  }
+
+  Future<void> _resumeAfterLifecyclePause() =>
+      _lifecycleResume ??= _runLifecycleResume();
+
+  Future<void> _runLifecycleResume() async {
+    try {
+      final release = _lifecycleRelease;
+      if (release != null) {
+        await release;
+      }
+      if (!mounted ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+          _editorRouteActive ||
+          _session.isComplete ||
+          _controller != null) {
+        return;
+      }
+      await _initializeCamera();
+    } finally {
+      _lifecycleResume = null;
     }
   }
 
@@ -225,6 +265,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       return;
     }
     _openingEditor = true;
+    _editorRouteActive = true;
     final result = _session.classify();
     await _releaseCamera();
     if (!mounted) {
@@ -247,6 +288,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     if (!mounted) {
       return;
     }
+    _editorRouteActive = false;
     if (rescanFace != null) {
       setState(() {
         _session.restartFrom(rescanFace);
@@ -259,6 +301,22 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         _loadingCamera = false;
       });
     }
+  }
+
+  Future<void> _restartScan() async {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _session.restartFrom(CubeFace.up);
+      _previewSamples = null;
+      _cameraError = null;
+    });
+    await _releaseCamera();
+    if (!mounted) {
+      return;
+    }
+    await _initializeCamera();
   }
 
   void _openManualEntry() {
@@ -309,12 +367,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     if (_session.isComplete) {
       return _CompletedScan(
         onReview: _openEditor,
-        onRestart: () {
-          setState(() {
-            _session.restartFrom(CubeFace.up);
-            _previewSamples = null;
-          });
-        },
+        onRestart: () => unawaited(_restartScan()),
       );
     }
     final samples = _previewSamples;
