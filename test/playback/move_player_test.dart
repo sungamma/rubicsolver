@@ -52,6 +52,8 @@ void main() {
     expect(player.speed, const Duration(milliseconds: 500));
     player.speed = const Duration(milliseconds: 1400);
     expect(player.speed, const Duration(milliseconds: 1400));
+    player.speed = const Duration(milliseconds: 2400);
+    expect(player.speed, const Duration(milliseconds: 2400));
     expect(
       () => player.speed = const Duration(milliseconds: 100),
       throwsArgumentError,

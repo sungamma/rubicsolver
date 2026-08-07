@@ -97,6 +97,9 @@ class _SolutionPageState extends State<SolutionPage> {
                         move: _player.currentFace == null
                             ? null
                             : _player.currentMove,
+                        animationDuration: _cubeAnimationDuration(
+                          _player.speed,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -246,6 +249,10 @@ class _SolutionPageState extends State<SolutionPage> {
                   value: Duration(milliseconds: 1400),
                   child: Text('慢 · 1.4 秒'),
                 ),
+                DropdownMenuItem(
+                  value: Duration(milliseconds: 2400),
+                  child: Text('慢动作 · 2.4 秒'),
+                ),
               ],
               onChanged: (value) {
                 if (value != null) {
@@ -257,6 +264,16 @@ class _SolutionPageState extends State<SolutionPage> {
         ),
       ],
     );
+  }
+
+  Duration _cubeAnimationDuration(Duration speed) {
+    return switch (speed.inMilliseconds) {
+      500 => const Duration(milliseconds: 380),
+      900 => const Duration(milliseconds: 720),
+      1400 => const Duration(milliseconds: 1200),
+      2400 => const Duration(milliseconds: 2100),
+      _ => const Duration(milliseconds: 320),
+    };
   }
 
   Widget _buildFormula(BuildContext context) {

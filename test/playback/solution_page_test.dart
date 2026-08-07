@@ -135,6 +135,44 @@ void main() {
     expect(painter.activeFace, isNull);
   });
 
+  testWidgets('shows a counter-clockwise turn arrow for inverse moves', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove("R'")],
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('turn-arrow-counter-clockwise')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('offers a 2.4 second slow-motion playback option', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R')],
+        ),
+      ),
+    );
+
+    final speedMenu = find.byType(DropdownButton<Duration>);
+    await tester.ensureVisible(speedMenu);
+    await tester.pump();
+    await tester.tap(speedMenu);
+    await tester.pump();
+    expect(find.text('慢动作 · 2.4 秒'), findsOneWidget);
+  });
+
   testWidgets('320dp playback controls keep Chinese labels on one line', (
     tester,
   ) async {

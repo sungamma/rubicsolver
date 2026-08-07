@@ -66,4 +66,47 @@ void main() {
     expect(painter.state, turned);
     expect(painter.animationValue, 1);
   });
+
+  testWidgets(
+    'dragging changes the view and reset restores the standard angle',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 280,
+              child: Cube3DView(state: CubeState.solved()),
+            ),
+          ),
+        ),
+      );
+
+      Cube3DPainter painter() =>
+          tester
+                  .widget<CustomPaint>(
+                    find.byKey(const ValueKey('cube-3d-canvas')),
+                  )
+                  .painter!
+              as Cube3DPainter;
+
+      expect(painter().yaw, defaultCubeYaw);
+      expect(painter().pitch, defaultCubePitch);
+
+      await tester.drag(
+        find.byKey(const ValueKey('cube-3d-canvas')),
+        const Offset(80, -40),
+      );
+      await tester.pump();
+
+      expect(painter().yaw, isNot(defaultCubeYaw));
+      expect(painter().pitch, isNot(defaultCubePitch));
+
+      await tester.tap(find.byKey(const ValueKey('reset-cube-view')));
+      await tester.pump();
+
+      expect(painter().yaw, defaultCubeYaw);
+      expect(painter().pitch, defaultCubePitch);
+    },
+  );
 }

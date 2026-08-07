@@ -191,8 +191,13 @@ class MovePlayer extends ChangeNotifier {
   static void _validateSpeed(Duration value) {
     if (value != const Duration(milliseconds: 500) &&
         value != defaultMoveSpeed &&
-        value != const Duration(milliseconds: 1400)) {
-      throw ArgumentError.value(value, 'speed', '播放速度只能是 500、900 或 1400 毫秒');
+        value != const Duration(milliseconds: 1400) &&
+        value != const Duration(milliseconds: 2400)) {
+      throw ArgumentError.value(
+        value,
+        'speed',
+        '播放速度只能是 500、900、1400 或 2400 毫秒',
+      );
     }
   }
 
