@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -143,6 +144,59 @@ void main() {
     expect(controllers.single.disposed, isTrue);
     expect(find.text('六个面已采集完成'), findsOneWidget);
   });
+
+  testWidgets('ignores a capture result from a released camera generation', (
+    tester,
+  ) async {
+    final samplingStarted = Completer<void>();
+    final oldSamples = Completer<List<StickerSample>>();
+    final controllers = <_FakeScanCameraController>[];
+    Future<List<StickerSample>> sampleInBackground(Uint8List bytes) {
+      samplingStarted.complete();
+      return oldSamples.future;
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanPage(
+          cameraDiscovery: () async => const [_backCamera],
+          cameraFactory: (description) {
+            final controller = _FakeScanCameraController(
+              description,
+              picture: XFile.fromData(
+                Uint8List.fromList([1, 2, 3]),
+                name: 'capture.jpg',
+              ),
+            );
+            controllers.add(controller);
+            return controller;
+          },
+          sampleInBackground: sampleInBackground,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('拍摄此面'));
+    await samplingStarted.future;
+    await tester.pump();
+    expect(find.text('正在分析…'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(controllers, hasLength(2));
+
+    oldSamples.complete(_samplesFor(CubeFace.up));
+    await tester.pumpAndSettle();
+
+    expect(find.text('接受此面'), findsNothing);
+    expect(find.text('拍摄此面'), findsOneWidget);
+  });
 }
 
 Future<List<CameraDescription>> _noCameras() async => const [];
@@ -160,12 +214,13 @@ const _backCamera = CameraDescription(
 );
 
 class _FakeScanCameraController implements ScanCameraController {
-  _FakeScanCameraController(this.description, {this.disposeGate});
+  _FakeScanCameraController(this.description, {this.disposeGate, this.picture});
 
   @override
   final CameraDescription description;
 
   final Future<void>? disposeGate;
+  final XFile? picture;
   var _initialized = false;
   var disposeStarted = false;
   var disposed = false;
@@ -197,11 +252,12 @@ class _FakeScanCameraController implements ScanCameraController {
   Future<void> initialize() async => _initialized = true;
 
   @override
-  Future<XFile> takePicture() => throw UnsupportedError('not used');
+  Future<XFile> takePicture() => picture == null
+      ? throw UnsupportedError('not used')
+      : Future.value(picture);
 }
 
-ScanSession _completedSession() {
-  final session = ScanSession();
+List<StickerSample> _samplesFor(CubeFace face) {
   final colors = {
     CubeFace.up: RgbColor(245, 245, 245),
     CubeFace.right: RgbColor(220, 35, 45),
@@ -210,13 +266,16 @@ ScanSession _completedSession() {
     CubeFace.left: RgbColor(245, 125, 20),
     CubeFace.back: RgbColor(25, 90, 210),
   };
+  return List.generate(
+    9,
+    (_) => StickerSample(rgb: colors[face]!, luminanceVariance: 0),
+  );
+}
+
+ScanSession _completedSession() {
+  final session = ScanSession();
   for (final face in CubeFace.values) {
-    session.acceptCurrent(
-      List.generate(
-        9,
-        (_) => StickerSample(rgb: colors[face]!, luminanceVariance: 0),
-      ),
-    );
+    session.acceptCurrent(_samplesFor(face));
   }
   return session;
 }

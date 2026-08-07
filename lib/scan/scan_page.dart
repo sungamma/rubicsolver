@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,8 @@ import 'scan_session.dart';
 import 'sticker_sample.dart';
 
 typedef CameraDiscovery = Future<List<CameraDescription>> Function();
+typedef BackgroundFaceSampler =
+    Future<List<StickerSample>> Function(Uint8List bytes);
 
 class ScanPage extends StatefulWidget {
   const ScanPage({
@@ -20,12 +23,14 @@ class ScanPage extends StatefulWidget {
     this.cameraDiscovery,
     this.cameraFactory,
     this.faceSampler = const FaceSampler(),
+    this.sampleInBackground,
     this.session,
   });
 
   final CameraDiscovery? cameraDiscovery;
   final ScanCameraFactory? cameraFactory;
   final FaceSampler faceSampler;
+  final BackgroundFaceSampler? sampleInBackground;
   final ScanSession? session;
 
   @override
@@ -141,6 +146,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       setState(() {
         _controller = null;
         _loadingCamera = true;
+        _sampling = false;
+        _samplingError = null;
       });
     }
     await controller.dispose();
@@ -154,6 +161,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         _sampling) {
       return;
     }
+    final generation = _cameraGeneration;
 
     setState(() {
       _sampling = true;
@@ -161,14 +169,22 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     });
     try {
       final photo = await controller.takePicture();
+      if (!_isCurrentCapture(controller, generation)) {
+        return;
+      }
       final bytes = await photo.readAsBytes();
-      final samples = await widget.faceSampler.sampleInBackground(bytes);
-      if (!mounted) {
+      if (!_isCurrentCapture(controller, generation)) {
+        return;
+      }
+      final sample =
+          widget.sampleInBackground ?? widget.faceSampler.sampleInBackground;
+      final samples = await sample(bytes);
+      if (!_isCurrentCapture(controller, generation)) {
         return;
       }
       setState(() => _previewSamples = samples);
     } catch (error) {
-      if (!mounted) {
+      if (!_isCurrentCapture(controller, generation)) {
         return;
       }
       setState(() {
@@ -177,11 +193,16 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
             : '拍照失败，请检查相机后重试。';
       });
     } finally {
-      if (mounted) {
+      if (_isCurrentCapture(controller, generation)) {
         setState(() => _sampling = false);
       }
     }
   }
+
+  bool _isCurrentCapture(ScanCameraController controller, int generation) =>
+      mounted &&
+      generation == _cameraGeneration &&
+      identical(controller, _controller);
 
   Future<void> _acceptPreview() async {
     final samples = _previewSamples;
