@@ -81,6 +81,8 @@ flutter build apk --release
 
 Android application id 为 `com.sungamma.rubicsolver`。Release 构建从 `android/key.properties` 读取 `storeFile`、`storePassword`、`keyAlias` 和 `keyPassword`，配置方式与上一级 `heat_ex_designer` 项目一致，可指向同一签名文件和身份。
 
+签名材料只保留在本机。需要复用现有签名时，可在本地从 `../heat_ex_designer/android` 复制 `key.properties` 与实际使用的 JKS 文件，或改为配置自己的 keystore；这些文件以及 `keystore.base64` 均已加入忽略规则，不应进入 Git。
+
 不要提交 `key.properties`、keystore、密码或个人令牌。仓库只保存读取逻辑，不保存签名秘密。
 
 ## 更新发布约定

@@ -102,7 +102,7 @@ lib/
 ## 更新、签名与作者信息
 
 - Android `applicationId` 使用 `com.sungamma.rubicsolver`。
-- 复制并复用 `../heat_ex_designer/android` 中已使用的签名材料及 `key.properties`，但不在日志或文档中输出密码。
+- 在本机复用 `../heat_ex_designer/android` 中已使用的签名材料及 `key.properties`，但不把签名文件加入 Git，也不在日志或文档中输出密码。
 - 更新服务沿用 `sungamma/flutter-learn` 仓库约定，检查 `rubicsolver/pubspec.yaml`，发行标签使用 `rubicsolver<version>`，Android 资产名为 `app-release.apk`。
 - GitHub 公共内容不要求硬编码访问令牌；可选令牌通过 `--dart-define=GITHUB_TOKEN=...` 注入。
 - Android 下载完成后交给系统安装器确认，不静默安装。

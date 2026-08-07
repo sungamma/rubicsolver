@@ -59,10 +59,8 @@ test/
 - Modify: `android/app/build.gradle.kts`
 - Modify: `android/app/src/main/AndroidManifest.xml`
 - Modify: `ios/Runner/Info.plist`
-- Copy: `android/key.properties`
-- Copy: `android/heat_ex_designer.jks`
-- Copy: `android/keystore.base64`
-- Copy: `android/app/key.jks`
+- Local-only, ignored: `android/key.properties`
+- Local-only, ignored: the JKS file referenced by `key.properties`
 
 - [ ] **Step 1: 生成最小 Flutter 工程**
 
@@ -104,7 +102,7 @@ abstract final class AppInfo {
 
 - [ ] **Step 4: 复用签名文件并配置 release signing**
 
-Copy the four signing files from `../heat_ex_designer/android` without printing their contents. In `android/app/build.gradle.kts`, load `../key.properties`, create the `release` signing config and assign it to the release build type. Keep the new application id instead of the heat-exchanger id.
+Reuse `../heat_ex_designer/android/key.properties` and its referenced JKS file locally without printing their contents or adding either file to Git. In `android/app/build.gradle.kts`, load `../key.properties`, create the `release` signing config and assign it to the release build type. Keep the new application id instead of the heat-exchanger id.
 
 - [ ] **Step 5: 配置相机、网络和安装权限**
 
