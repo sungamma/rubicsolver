@@ -320,6 +320,71 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
           _lockedPreviewFaces[index] ?? faces[index],
       ]);
 
+  Future<void> _editPreviewColor(int index) async {
+    if (index == 4 || _previewSamples == null) {
+      return;
+    }
+    final selectedFace = await showModalBottomSheet<CubeFace>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '选择第 ${index + 1} 格颜色',
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 3,
+                childAspectRatio: 2.2,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                children: [
+                  for (final face in CubeFace.values)
+                    InkWell(
+                      key: ValueKey('preview-color-${face.name}'),
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => Navigator.of(sheetContext).pop(face),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: CubePalette.colorFor(face),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Theme.of(sheetContext).colorScheme.outline,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${CubePalette.nameFor(face)} ${face.letter}',
+                            style: TextStyle(
+                              color: CubePalette.foregroundFor(face),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selectedFace == null || !mounted || _previewSamples == null) {
+      return;
+    }
+    setState(() => _lockedPreviewFaces[index] = selectedFace);
+  }
+
   Future<bool> _safeDispose(ScanCameraController controller) async {
     try {
       await controller.dispose();
@@ -610,6 +675,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         samples: samples,
         recognizedFaces: recognizedFaces,
         lockedFaces: _lockedPreviewFaces,
+        onEditColor: (index) => unawaited(_editPreviewColor(index)),
         onRetry: () => unawaited(_retryPreview()),
         onAccept: _acceptPreview,
       );
@@ -848,9 +914,9 @@ class _LiveRecognitionGrid extends StatelessWidget {
                 ),
                 child: Stack(
                   children: [
-                    Positioned(
-                      top: 5,
-                      right: 5,
+                    Align(
+                      key: ValueKey('live-recognition-dot-$index'),
+                      alignment: Alignment.center,
                       child: Container(
                         width: 22,
                         height: 22,
@@ -918,6 +984,7 @@ class _SamplePreview extends StatelessWidget {
     required this.samples,
     required this.recognizedFaces,
     required this.lockedFaces,
+    required this.onEditColor,
     required this.onRetry,
     required this.onAccept,
   });
@@ -926,6 +993,7 @@ class _SamplePreview extends StatelessWidget {
   final List<StickerSample> samples;
   final List<CubeFace> recognizedFaces;
   final Map<int, CubeFace> lockedFaces;
+  final ValueChanged<int> onEditColor;
   final VoidCallback onRetry;
   final VoidCallback onAccept;
 
@@ -955,45 +1023,52 @@ class _SamplePreview extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final sample = samples[index];
                     final recognizedFace = recognizedFaces[index];
-                    return DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: CubePalette.colorFor(recognizedFace),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: sample.isLowQuality
-                              ? Theme.of(context).colorScheme.error
-                              : Theme.of(context).colorScheme.outline,
-                          width: sample.isLowQuality ? 3 : 1,
-                        ),
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Text(
-                            CubePalette.nameFor(recognizedFace),
-                            style: TextStyle(
-                              color: CubePalette.foregroundFor(recognizedFace),
-                              fontWeight: FontWeight.bold,
-                            ),
+                    return InkWell(
+                      key: ValueKey('preview-sticker-$index'),
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: index == 4 ? null : () => onEditColor(index),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: CubePalette.colorFor(recognizedFace),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: sample.isLowQuality
+                                ? Theme.of(context).colorScheme.error
+                                : Theme.of(context).colorScheme.outline,
+                            width: sample.isLowQuality ? 3 : 1,
                           ),
-                          if (sample.isLowQuality)
-                            const Align(
-                              alignment: Alignment.topRight,
-                              child: Padding(
-                                padding: EdgeInsets.all(4),
-                                child: Icon(Icons.warning_amber_rounded),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Text(
+                              CubePalette.nameFor(recognizedFace),
+                              style: TextStyle(
+                                color: CubePalette.foregroundFor(
+                                  recognizedFace,
+                                ),
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          if (lockedFaces.containsKey(index))
-                            Align(
-                              key: ValueKey('locked-preview-$index'),
-                              alignment: Alignment.bottomRight,
-                              child: const Padding(
-                                padding: EdgeInsets.all(5),
-                                child: Icon(Icons.lock_rounded, size: 18),
+                            if (sample.isLowQuality)
+                              const Align(
+                                alignment: Alignment.topRight,
+                                child: Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.warning_amber_rounded),
+                                ),
                               ),
-                            ),
-                        ],
+                            if (lockedFaces.containsKey(index))
+                              Align(
+                                key: ValueKey('locked-preview-$index'),
+                                alignment: Alignment.bottomRight,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(5),
+                                  child: Icon(Icons.lock_rounded, size: 18),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -1059,6 +1134,10 @@ class _FaceInstruction extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               Text(subtitle),
+              const Text(
+                '标准方向：白色中心 = U，绿色中心 = F',
+                style: TextStyle(fontSize: 12),
+              ),
             ],
           ),
         ),
@@ -1229,22 +1308,22 @@ String _cameraErrorMessage(Object error) {
 
 String _faceName(CubeFace face) {
   return switch (face) {
-    CubeFace.up => 'U 面',
-    CubeFace.right => 'R 面',
-    CubeFace.front => 'F 面',
-    CubeFace.down => 'D 面',
-    CubeFace.left => 'L 面',
-    CubeFace.back => 'B 面',
+    CubeFace.up => '白色 U 面',
+    CubeFace.right => '红色 R 面',
+    CubeFace.front => '绿色 F 面',
+    CubeFace.down => '黄色 D 面',
+    CubeFace.left => '橙色 L 面',
+    CubeFace.back => '蓝色 B 面',
   };
 }
 
 String _orientationHint(CubeFace face) {
   return switch (face) {
-    CubeFace.up => '保持 B 面朝上',
-    CubeFace.right => '保持 U 面朝上',
-    CubeFace.front => '保持 U 面朝上',
-    CubeFace.down => '保持 F 面朝上',
-    CubeFace.left => '保持 U 面朝上',
-    CubeFace.back => '保持 U 面朝上',
+    CubeFace.up => '蓝色边朝上',
+    CubeFace.right => '白色边朝上',
+    CubeFace.front => '白色边朝上',
+    CubeFace.down => '绿色边朝上',
+    CubeFace.left => '白色边朝上',
+    CubeFace.back => '白色边朝上',
   };
 }

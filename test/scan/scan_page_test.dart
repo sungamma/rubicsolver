@@ -52,24 +52,64 @@ void main() {
     expect(factoryCalls, 0);
   });
 
-  testWidgets('uses neutral face guidance and hides unverified flash control', (
+  testWidgets(
+    'uses standard color guidance and hides unverified flash control',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ScanPage(
+            cameraDiscovery: () async => const [_backCamera],
+            cameraFactory: _FakeScanCameraController.new,
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('白色 U 面'), findsOneWidget);
+      expect(find.textContaining('蓝色边朝上'), findsOneWidget);
+      expect(find.textContaining('白色中心 = U'), findsOneWidget);
+      expect(find.textContaining('绿色中心 = F'), findsOneWidget);
+      expect(find.byIcon(Icons.flash_off), findsNothing);
+      expect(find.byIcon(Icons.flash_on), findsNothing);
+    },
+  );
+
+  testWidgets('shows the fixed color orientation for every scan face', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ScanPage(
-          cameraDiscovery: () async => const [_backCamera],
-          cameraFactory: _FakeScanCameraController.new,
+    const expected = {
+      CubeFace.up: ('白色 U 面', '蓝色边朝上'),
+      CubeFace.right: ('红色 R 面', '白色边朝上'),
+      CubeFace.front: ('绿色 F 面', '白色边朝上'),
+      CubeFace.down: ('黄色 D 面', '绿色边朝上'),
+      CubeFace.left: ('橙色 L 面', '白色边朝上'),
+      CubeFace.back: ('蓝色 B 面', '白色边朝上'),
+    };
+
+    for (final face in CubeFace.values) {
+      final session = ScanSession();
+      for (final completed in CubeFace.values.take(face.index)) {
+        session.acceptCurrent(_samplesFor(completed));
+      }
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ScanPage(
+            key: ValueKey('scan-${face.name}'),
+            cameraDiscovery: () async => const [_backCamera],
+            cameraFactory: _FakeScanCameraController.new,
+            session: session,
+          ),
         ),
-      ),
-    );
+      );
+      await tester.pumpAndSettle();
 
-    await tester.pumpAndSettle();
+      expect(find.textContaining(expected[face]!.$1), findsOneWidget);
+      expect(find.textContaining(expected[face]!.$2), findsOneWidget);
 
-    expect(find.textContaining('将U 面中心'), findsOneWidget);
-    expect(find.textContaining('白色'), findsNothing);
-    expect(find.byIcon(Icons.flash_off), findsNothing);
-    expect(find.byIcon(Icons.flash_on), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
   });
 
   testWidgets('shows recognized colors directly over the camera preview', (
@@ -115,6 +155,10 @@ void main() {
     );
     final decoration = firstCell.decoration! as BoxDecoration;
     expect(decoration.color!.a, lessThanOrEqualTo(0.12));
+    final firstDot = tester.widget<Align>(
+      find.byKey(const ValueKey('live-recognition-dot-0')),
+    );
+    expect(firstDot.alignment, Alignment.center);
     expect(find.byKey(const ValueKey('lock-current-colors')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('live-recognition-0')));
@@ -130,12 +174,29 @@ void main() {
     expect(find.text('白色'), findsNWidgets(9));
     expect(find.byKey(const ValueKey('locked-preview-0')), findsOneWidget);
 
+    await tester.tap(find.byKey(const ValueKey('preview-sticker-1')));
+    await tester.pumpAndSettle();
+    for (final face in CubeFace.values) {
+      expect(
+        find.byKey(ValueKey('preview-color-${face.name}')),
+        findsOneWidget,
+      );
+    }
+    await tester.tap(find.byKey(const ValueKey('preview-color-right')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('locked-preview-1')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('preview-sticker-4')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('preview-color-up')), findsNothing);
+
     await tester.ensureVisible(find.text('接受此面'));
     await tester.pump();
     await tester.tap(find.text('接受此面'));
     await tester.pumpAndSettle();
 
     expect(session.lockedFacesByFace[CubeFace.up]![0], CubeFace.up);
+    expect(session.lockedFacesByFace[CubeFace.up]![1], CubeFace.right);
   });
 
   testWidgets('completed review stays camera-free and rescan opens camera', (
