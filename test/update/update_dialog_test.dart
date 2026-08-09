@@ -78,6 +78,42 @@ void main() {
     expect(find.text('服务器不可用'), findsOneWidget);
     expect(find.text('下载并安装'), findsOneWidget);
   });
+
+  testWidgets('prevents back navigation while the APK is downloading', (
+    tester,
+  ) async {
+    final service = _FakeUpdateService();
+    addTearDown(service.finishDownload);
+    addTearDown(service.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showUpdateDialog(
+              context: context,
+              service: service,
+              update: _updateInfo(notes: '说明'),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('下载并安装'));
+    await tester.pump();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('发现新版本'), findsOneWidget);
+
+    service.finishDownload();
+    await tester.pumpAndSettle();
+  });
 }
 
 UpdateInfo _updateInfo({required String notes}) {
