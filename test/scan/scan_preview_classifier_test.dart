@@ -32,20 +32,27 @@ void main() {
     expect(faces[6], CubeFace.back);
   });
 
-  test('uses previously captured centers before standard references', () {
-    final purpleCenter = _sample(90, 35, 155);
-    final captured = {CubeFace.right: List.generate(9, (_) => purpleCenter)};
+  test('keeps live results stable as historical captures accumulate', () {
+    final purple = _sample(90, 35, 155);
+    final misleadingHistory = {
+      for (final face in CubeFace.values.take(5))
+        face: List.generate(9, (_) => purple),
+    };
     final samples = List.generate(9, (_) => _sample(245, 245, 245));
-    samples[0] = _sample(92, 36, 153);
+    samples[0] = purple;
 
-    final faces = const ScanPreviewClassifier().classify(
+    final withoutHistory = const ScanPreviewClassifier().classify(
       samples: samples,
-      currentFace: CubeFace.front,
-      capturedSamplesByFace: captured,
+      currentFace: CubeFace.back,
+    );
+    final withHistory = const ScanPreviewClassifier().classify(
+      samples: samples,
+      currentFace: CubeFace.back,
+      capturedSamplesByFace: misleadingHistory,
     );
 
-    expect(faces[0], CubeFace.right);
-    expect(faces[4], CubeFace.front);
+    expect(withHistory, withoutHistory);
+    expect(withHistory[4], CubeFace.back);
   });
 
   test('rejects an incomplete preview frame', () {

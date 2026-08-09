@@ -603,7 +603,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         const ScanPreviewClassifier().classify(
           samples: samples,
           currentFace: face,
-          capturedSamplesByFace: _session.samplesByFace,
         ),
       );
       return _SamplePreview(
@@ -644,7 +643,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
             const ScanPreviewClassifier().classify(
               samples: _liveSamples!,
               currentFace: _session.currentFace!,
-              capturedSamplesByFace: _session.samplesByFace,
             ),
           );
     return _CaptureGuide(

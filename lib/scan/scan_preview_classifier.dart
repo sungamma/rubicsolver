@@ -1,6 +1,5 @@
 import '../cube/cube_face.dart';
-import '../cube/cube_palette.dart';
-import 'color_math.dart';
+import 'scan_color_matcher.dart';
 import 'sticker_sample.dart';
 
 final class ScanPreviewClassifier {
@@ -15,36 +14,17 @@ final class ScanPreviewClassifier {
       throw ArgumentError.value(samples.length, 'samples.length', '必须为 9');
     }
 
-    final references = {
-      for (final face in CubeFace.values) face: _standardRgb(face),
-      for (final entry in capturedSamplesByFace.entries)
-        if (entry.value.length == 9) entry.key: entry.value[4].rgb,
-      currentFace: samples[4].rgb,
-    };
-    final referenceLabs = {
-      for (final entry in references.entries) entry.key: entry.value.toLab(),
-    };
+    final matcher = ScanColorMatcher(
+      capturedFace: currentFace,
+      observedCenter: samples[4].rgb,
+    );
 
     return List.unmodifiable([
       for (var index = 0; index < samples.length; index++)
         if (index == 4)
           currentFace
         else
-          _nearestFace(samples[index].rgb, referenceLabs),
+          matcher.rank(samples[index].rgb).first.face,
     ]);
-  }
-
-  CubeFace _nearestFace(RgbColor rgb, Map<CubeFace, LabColor> referenceLabs) {
-    final sampleLab = rgb.toLab();
-    return CubeFace.values.reduce((best, face) {
-      final bestDistance = deltaE76(sampleLab, referenceLabs[best]!);
-      final distance = deltaE76(sampleLab, referenceLabs[face]!);
-      return distance < bestDistance ? face : best;
-    });
-  }
-
-  RgbColor _standardRgb(CubeFace face) {
-    final argb = CubePalette.colorFor(face).toARGB32();
-    return RgbColor((argb >> 16) & 0xff, (argb >> 8) & 0xff, argb & 0xff);
   }
 }
