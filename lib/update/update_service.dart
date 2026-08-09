@@ -8,7 +8,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yaml/yaml.dart';
 
 import 'version_number.dart';
 
@@ -25,16 +24,16 @@ class UpdateInfo {
   const UpdateInfo({
     required this.currentVersion,
     required this.latestVersion,
-    required this.releaseTag,
     required this.assetName,
     required this.downloadUrl,
+    required this.releaseNotes,
   });
 
   final VersionNumber currentVersion;
   final VersionNumber latestVersion;
-  final String releaseTag;
   final String assetName;
   final Uri downloadUrl;
+  final String releaseNotes;
 }
 
 class UpdateCheckResult {
@@ -86,18 +85,17 @@ class UpdateService {
        _isAndroid = isAndroid ?? (() => Platform.isAndroid),
        _now = now ?? DateTime.now;
 
-  static const rawPubspecUrl =
-      'https://raw.githubusercontent.com/sungamma/flutter-learn/master/'
-      'rubicsolver/pubspec.yaml';
-  static const repositoryApiBaseUrl =
-      'https://api.github.com/repos/sungamma/flutter-learn';
-  static const apkAssetName = 'app-release.apk';
+  static const serverBaseUrl = 'https://zl.870413.xyz:5443';
+  static const versionAssetName = 'rubicsolver_version.txt';
+  static const notesAssetName = 'rubicsolver_update_notes.md';
+  static const apkAssetName = 'rubicsolver.apk';
   static const lastCheckEpochKey = 'rubicsolver.last_update_check_epoch_ms';
   static const checkInterval = Duration(days: 7);
+  static const _serverUsername = 'zls';
+  static const _serverPassword = 'zls12345';
 
-  // A token is intentionally only accepted from a compile-time environment
-  // variable. Never place a personal token in source control.
-  static const githubToken = String.fromEnvironment('GITHUB_TOKEN');
+  static String get authorizationHeader =>
+      'Basic ${base64Encode(utf8.encode('$_serverUsername:$_serverPassword'))}';
 
   final http.Client _client;
   final PackageInfoProvider _packageInfoProvider;
@@ -107,8 +105,6 @@ class UpdateService {
   final ApkOpener _apkOpener;
   final PlatformDetector _isAndroid;
   final DateTime Function() _now;
-
-  static String releaseTagFor(VersionNumber version) => 'rubicsolver$version';
 
   static bool shouldThrottle({
     required DateTime? lastChecked,
@@ -134,39 +130,23 @@ class UpdateService {
 
       final packageInfo = await _packageInfoProvider();
       final currentVersion = _parsePackageVersion(packageInfo);
-      final pubspecResponse = await _get(
-        Uri.parse(rawPubspecUrl),
-        headers: _rawFileHeaders,
-      );
-      if (pubspecResponse.statusCode != 200) {
-        throw HttpException('远程版本文件返回 HTTP ${pubspecResponse.statusCode}');
+      final versionResponse = await _get(_versionUri, headers: _textHeaders);
+      if (versionResponse.statusCode != 200) {
+        throw HttpException('远程版本文件返回 HTTP ${versionResponse.statusCode}');
       }
 
-      final latestVersion = _parseRemoteVersion(pubspecResponse.body);
+      final latestVersion = _parseRemoteVersion(versionResponse.body);
       if (latestVersion <= currentVersion) {
         return const UpdateCheckResult.upToDate();
       }
 
-      final releaseTag = releaseTagFor(latestVersion);
-      final releaseResponse = await _get(
-        Uri.parse(
-          '$repositoryApiBaseUrl/releases/tags/${Uri.encodeComponent(releaseTag)}',
-        ),
-        headers: _githubHeaders,
-      );
-      if (releaseResponse.statusCode != 200) {
-        throw HttpException(
-          'GitHub release 返回 HTTP ${releaseResponse.statusCode}',
-        );
-      }
-
-      final downloadUrl = _findApkDownloadUrl(releaseResponse.body);
+      final releaseNotes = await _loadReleaseNotes(latestVersion);
       final update = UpdateInfo(
         currentVersion: currentVersion,
         latestVersion: latestVersion,
-        releaseTag: releaseTag,
         assetName: apkAssetName,
-        downloadUrl: downloadUrl,
+        downloadUrl: _apkUri,
+        releaseNotes: releaseNotes,
       );
       return UpdateCheckResult.updateAvailable(update);
     } catch (error) {
@@ -191,10 +171,7 @@ class UpdateService {
       );
 
       final request = http.Request('GET', update.downloadUrl)
-        ..headers.addAll({
-          ..._githubHeaders,
-          'Accept': 'application/octet-stream',
-        });
+        ..headers.addAll(_downloadHeaders);
       final response = await _client
           .send(request)
           .timeout(const Duration(seconds: 60));
@@ -277,14 +254,7 @@ class UpdateService {
   }
 
   VersionNumber _parseRemoteVersion(String content) {
-    final yaml = loadYaml(content);
-    if (yaml is! YamlMap) {
-      throw const FormatException('远程 pubspec 不是 YAML 映射');
-    }
-    final rawVersion = yaml['version'];
-    if (rawVersion is! String) {
-      throw const FormatException('远程 pubspec 缺少 version');
-    }
+    final rawVersion = content.trim();
     final version = VersionNumber.tryParse(rawVersion);
     if (version == null) {
       throw FormatException('远程版本号无效：$rawVersion');
@@ -292,23 +262,17 @@ class UpdateService {
     return version;
   }
 
-  Uri _findApkDownloadUrl(String content) {
-    final payload = jsonDecode(content);
-    if (payload is! Map<String, dynamic>) {
-      throw const FormatException('GitHub release 响应格式无效');
+  Future<String> _loadReleaseNotes(VersionNumber version) async {
+    try {
+      final response = await _get(_notesUri, headers: _textHeaders);
+      final notes = response.body.trim();
+      if (response.statusCode == 200 && notes.isNotEmpty) {
+        return notes;
+      }
+    } catch (_) {
+      // Release notes are optional once a newer version has been identified.
     }
-    final assets = payload['assets'];
-    if (assets is! List) {
-      throw const FormatException('GitHub release 缺少 assets');
-    }
-    for (final item in assets) {
-      if (item is! Map) continue;
-      if (item['name'] != apkAssetName) continue;
-      final rawUrl = item['browser_download_url'] ?? item['url'];
-      if (rawUrl is! String || rawUrl.isEmpty) break;
-      return Uri.parse(rawUrl);
-    }
-    throw const FormatException('GitHub release 中未找到 app-release.apk');
+    return '# 更新说明\n\n发现新版本 $version，点击下载并安装即可更新。';
   }
 
   Future<http.Response> _get(Uri uri, {required Map<String, String> headers}) {
@@ -317,16 +281,22 @@ class UpdateService {
         .timeout(const Duration(seconds: 15));
   }
 
-  Map<String, String> get _rawFileHeaders => {
+  Uri get _versionUri => Uri.parse('$serverBaseUrl/$versionAssetName');
+
+  Uri get _notesUri => Uri.parse('$serverBaseUrl/$notesAssetName');
+
+  Uri get _apkUri => Uri.parse('$serverBaseUrl/$apkAssetName');
+
+  Map<String, String> get _textHeaders => {
     'User-Agent': 'RubikSolver-App',
     'Accept': 'text/plain',
-    if (githubToken.isNotEmpty) 'Authorization': 'Bearer $githubToken',
+    'Authorization': authorizationHeader,
   };
 
-  Map<String, String> get _githubHeaders => {
+  Map<String, String> get _downloadHeaders => {
     'User-Agent': 'RubikSolver-App',
-    'Accept': 'application/vnd.github+json',
-    if (githubToken.isNotEmpty) 'Authorization': 'Bearer $githubToken',
+    'Accept': 'application/octet-stream',
+    'Authorization': authorizationHeader,
   };
 
   String _friendlyError(Object error) {

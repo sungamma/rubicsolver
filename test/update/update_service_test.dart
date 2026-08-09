@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -15,20 +14,13 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('parses remote version and resolves the release APK', () async {
+  test('reads version and notes from the custom update server', () async {
     final client = _QueueClient([
-      http.Response('version: 1.1.0+2\n', 200),
+      http.Response('1.1.1+3\n', 200),
       http.Response(
-        jsonEncode({
-          'assets': [
-            {
-              'name': 'app-release.apk',
-              'browser_download_url':
-                  'https://github.com/sungamma/flutter-learn/releases/download/rubicsolver1.1.0%2B2/app-release.apk',
-            },
-          ],
-        }),
+        '# 1.1.1\n\n自动更新',
         200,
+        headers: {'content-type': 'text/plain; charset=utf-8'},
       ),
     ]);
     final preferences = await SharedPreferences.getInstance();
@@ -42,18 +34,26 @@ void main() {
     final result = await service.checkForUpdates(force: true);
 
     expect(result.status, UpdateCheckStatus.updateAvailable);
-    expect(result.update?.latestVersion, VersionNumber.parse('1.1.0+2'));
-    expect(result.update?.releaseTag, 'rubicsolver1.1.0+2');
-    expect(result.update?.assetName, 'app-release.apk');
+    expect(result.update?.latestVersion, VersionNumber.parse('1.1.1+3'));
+    expect(result.update?.assetName, 'rubicsolver.apk');
+    expect(result.update?.releaseNotes, contains('自动更新'));
     expect(
       result.update?.downloadUrl.toString(),
-      contains('/releases/download/rubicsolver1.1.0%2B2/app-release.apk'),
+      'https://zl.870413.xyz:5443/rubicsolver.apk',
     );
     expect(client.requestedUris, hasLength(2));
+    expect(
+      client.requests.every(
+        (request) =>
+            request.headers['authorization'] ==
+            UpdateService.authorizationHeader,
+      ),
+      isTrue,
+    );
   });
 
   test('returns a failure result for malformed remote metadata', () async {
-    final client = _QueueClient([http.Response('version: nope\n', 200)]);
+    final client = _QueueClient([http.Response('nope\n', 200)]);
     final preferences = await SharedPreferences.getInstance();
     final service = UpdateService(
       client: client,
@@ -69,6 +69,24 @@ void main() {
     expect(result.errorMessage, isNotEmpty);
   });
 
+  test('still reports an update when remote notes cannot be loaded', () async {
+    final client = _QueueClient([
+      http.Response('1.1.1+3', 200),
+      http.Response('missing', 404),
+    ]);
+    final preferences = await SharedPreferences.getInstance();
+    final service = UpdateService(
+      client: client,
+      packageInfoProvider: () async => _packageInfo('1.1.0', '2'),
+      preferencesProvider: () async => preferences,
+    );
+
+    final result = await service.checkForUpdates(force: true);
+
+    expect(result.status, UpdateCheckStatus.updateAvailable);
+    expect(result.update?.releaseNotes, contains('1.1.1+3'));
+  });
+
   test(
     'throttles automatic checks for seven days but allows a forced check',
     () async {
@@ -78,7 +96,7 @@ void main() {
         UpdateService.lastCheckEpochKey,
         now.subtract(const Duration(days: 1)).millisecondsSinceEpoch,
       );
-      final client = _QueueClient([http.Response('version: 1.0.0+1\n', 200)]);
+      final client = _QueueClient([http.Response('1.0.0+1\n', 200)]);
       final service = UpdateService(
         client: client,
         packageInfoProvider: () async => _packageInfo('1.0.0', '1'),
@@ -109,10 +127,10 @@ void main() {
       );
       final update = UpdateInfo(
         currentVersion: VersionNumber.parse('1.0.0+1'),
-        latestVersion: VersionNumber.parse('1.1.0+2'),
-        releaseTag: 'rubicsolver1.1.0+2',
-        assetName: 'app-release.apk',
-        downloadUrl: Uri.parse('https://example.test/app-release.apk'),
+        latestVersion: VersionNumber.parse('1.1.1+3'),
+        assetName: 'rubicsolver.apk',
+        downloadUrl: Uri.parse('https://zl.870413.xyz:5443/rubicsolver.apk'),
+        releaseNotes: '# 1.1.1',
       );
       final progress = <double>[];
 
@@ -121,6 +139,14 @@ void main() {
       expect(File(path).readAsBytesSync(), List<int>.generate(10, (i) => i));
       expect(progress, isNotEmpty);
       expect(progress.last, 1);
+      expect(
+        client.requests.single.headers['authorization'],
+        UpdateService.authorizationHeader,
+      );
+      expect(
+        client.requests.single.headers['accept'],
+        'application/octet-stream',
+      );
     },
   );
 
@@ -164,10 +190,12 @@ class _QueueClient extends http.BaseClient {
 
   final List<http.Response> _responses;
   final requestedUris = <Uri>[];
+  final requests = <http.BaseRequest>[];
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     requestedUris.add(request.url);
+    requests.add(request);
     if (_responses.isEmpty) {
       throw StateError('No response queued for ${request.url}');
     }
