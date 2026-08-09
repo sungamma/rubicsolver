@@ -37,4 +37,11 @@ void main() {
 
     expect(deltaE76(first, second), closeTo(deltaE76(second, first), 1e-9));
   });
+
+  test('Delta E 2000 matches the Sharma reference pair', () {
+    const first = LabColor(50, 2.6772, -79.7751);
+    const second = LabColor(50, 0, -82.7485);
+
+    expect(deltaE2000(first, second), closeTo(2.0425, 0.0001));
+  });
 }
