@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../app/app_info.dart';
+import '../update/update_dialog.dart';
 import '../update/update_service.dart';
 
 class AboutPage extends StatefulWidget {
@@ -195,7 +196,11 @@ class _AboutPageState extends State<AboutPage> {
 
     switch (result.status) {
       case UpdateCheckStatus.updateAvailable:
-        await _showUpdateDialog(result.update!);
+        await showUpdateDialog(
+          context: context,
+          service: _updateService,
+          update: result.update!,
+        );
       case UpdateCheckStatus.upToDate:
         setState(() => _feedback = '当前已是最新版本');
       case UpdateCheckStatus.throttled:
@@ -203,90 +208,6 @@ class _AboutPageState extends State<AboutPage> {
       case UpdateCheckStatus.failed:
         setState(() => _feedback = result.errorMessage ?? '检查更新失败');
     }
-  }
-
-  Future<void> _showUpdateDialog(UpdateInfo update) async {
-    var downloading = false;
-    var progress = 0.0;
-    String? error;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('发现新版本'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('版本 ${update.latestVersion}'),
-                  const SizedBox(height: 8),
-                  const Text('下载 app-release.apk 后打开系统安装器。'),
-                  if (downloading) ...[
-                    const SizedBox(height: 16),
-                    LinearProgressIndicator(value: progress),
-                    const SizedBox(height: 6),
-                    Text('${(progress * 100).round()}%'),
-                  ],
-                  if (error != null) ...[
-                    const SizedBox(height: 10),
-                    Text(error!, style: TextStyle(color: Colors.red)),
-                  ],
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: downloading
-                      ? null
-                      : () => Navigator.of(dialogContext).pop(),
-                  child: const Text('稍后'),
-                ),
-                FilledButton(
-                  onPressed: downloading
-                      ? null
-                      : () async {
-                          setDialogState(() {
-                            downloading = true;
-                            error = null;
-                            progress = 0;
-                          });
-                          try {
-                            await _updateService.downloadAndInstall(
-                              update,
-                              onProgress: (value) {
-                                if (context.mounted) {
-                                  setDialogState(() => progress = value);
-                                }
-                              },
-                            );
-                            if (dialogContext.mounted) {
-                              Navigator.of(dialogContext).pop();
-                            }
-                            if (mounted) {
-                              setState(() => _feedback = '安装包已打开，请按系统提示完成安装');
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              setDialogState(() {
-                                downloading = false;
-                                error = e.toString().replaceFirst(
-                                  'Bad state: ',
-                                  '',
-                                );
-                              });
-                            }
-                          }
-                        },
-                  child: const Text('下载并安装'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
   }
 }
 
