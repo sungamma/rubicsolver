@@ -57,6 +57,8 @@ Rubik Solver 在 Android 启动后非阻塞地检查新版本。发现新版本�
 - 从 `pubspec.yaml` 的 `+build` 部分读取 Android build number，防止脚本与应用版本漂移。
 - 默认发布目录沿用 `X:\certificate`，同时继续支持共享脚本的命令行发布目录覆盖。
 
+本次发布版本升级为 `1.1.1+3`，确保已经安装 `1.1.0+2` 的设备能够识别并提示升级。
+
 本次只执行 `deploy.bat android`，不会生成 Debug 或 Windows 版本。发布后通过 HTTPS 端点重新读取版本、更新说明和 APK 元数据，确认服务器已更新。
 
 ## 更新说明
