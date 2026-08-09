@@ -4,6 +4,8 @@ import '../cube/cube_face.dart';
 import '../cube/cube_state.dart';
 import '../cube/cube_validation.dart';
 import 'color_math.dart';
+import 'minimum_cost_assignment.dart';
+import 'scan_color_matcher.dart';
 import 'sticker_sample.dart';
 
 final class ClassificationIssue {
@@ -89,24 +91,32 @@ final class ColorClassifier {
       );
     }
 
-    final stickers = <CubeFace>[];
+    final stickers = List<CubeFace?>.filled(54, null);
     final hints = <RecognitionHint>[];
     final poorQualityIndices = <int>[];
+    final assignedCounts = {for (final face in CubeFace.values) face: 0};
+    final unassigned = <_UnassignedSticker>[];
     for (final capturedFace in CubeFace.values) {
       final samples = samplesByFace[capturedFace]!;
       final lockedFaces = lockedFacesByFace[capturedFace] ?? const {};
+      final matcher = ScanColorMatcher(
+        capturedFace: capturedFace,
+        observedCenter: samples[4].rgb,
+      );
       for (var localIndex = 0; localIndex < samples.length; localIndex++) {
         final globalIndex = capturedFace.startIndex + localIndex;
         final sample = samples[localIndex];
 
         if (localIndex == 4) {
-          stickers.add(capturedFace);
+          stickers[globalIndex] = capturedFace;
+          assignedCounts[capturedFace] = assignedCounts[capturedFace]! + 1;
           continue;
         }
 
         final lockedFace = lockedFaces[localIndex];
         if (lockedFace != null) {
-          stickers.add(lockedFace);
+          stickers[globalIndex] = lockedFace;
+          assignedCounts[lockedFace] = assignedCounts[lockedFace]! + 1;
           continue;
         }
 
@@ -115,28 +125,62 @@ final class ColorClassifier {
           uncertainIndices.add(globalIndex);
         }
 
-        final sampleLab = sample.rgb.toLab();
-        final distances = [
-          for (final face in CubeFace.values)
-            (face: face, distance: deltaE76(sampleLab, centerLabs[face]!)),
-        ]..sort((first, second) => first.distance.compareTo(second.distance));
-        final best = distances[0];
-        final alternative = distances[1];
-        final confidence =
-            (alternative.distance - best.distance) /
-            math.max(alternative.distance, 1);
-        stickers.add(best.face);
-        hints.add(
-          RecognitionHint(
-            stickerIndex: globalIndex,
-            assignedFace: best.face,
-            alternativeFace: alternative.face,
-            confidence: confidence,
+        unassigned.add(
+          _UnassignedSticker(
+            globalIndex: globalIndex,
+            candidates: matcher.rank(sample.rgb),
           ),
         );
-        if (confidence < uncertainThreshold) {
-          uncertainIndices.add(globalIndex);
-        }
+      }
+    }
+
+    final hasOverCapacity = assignedCounts.values.any((count) => count > 9);
+    if (hasOverCapacity) {
+      for (final sticker in unassigned) {
+        stickers[sticker.globalIndex] = sticker.candidates.first.face;
+      }
+    } else {
+      final slots = <CubeFace>[
+        for (final face in CubeFace.values)
+          for (var count = assignedCounts[face]!; count < 9; count++) face,
+      ];
+      final costs = [
+        for (final sticker in unassigned)
+          [
+            for (final slot in slots)
+              sticker.candidates
+                  .firstWhere((candidate) => candidate.face == slot)
+                  .cost,
+          ],
+      ];
+      final assignedSlots = unassigned.isEmpty
+          ? const <int>[]
+          : minimumCostAssignment(costs);
+      for (var index = 0; index < unassigned.length; index++) {
+        stickers[unassigned[index].globalIndex] = slots[assignedSlots[index]];
+      }
+    }
+
+    for (final sticker in unassigned) {
+      final assignedFace = stickers[sticker.globalIndex]!;
+      final assigned = sticker.candidates.firstWhere(
+        (candidate) => candidate.face == assignedFace,
+      );
+      final alternative = sticker.candidates.firstWhere(
+        (candidate) => candidate.face != assignedFace,
+      );
+      final confidence =
+          (alternative.cost - assigned.cost) / math.max(alternative.cost, 1);
+      hints.add(
+        RecognitionHint(
+          stickerIndex: sticker.globalIndex,
+          assignedFace: assignedFace,
+          alternativeFace: alternative.face,
+          confidence: confidence,
+        ),
+      );
+      if (confidence < uncertainThreshold) {
+        uncertainIndices.add(sticker.globalIndex);
       }
     }
 
@@ -151,11 +195,21 @@ final class ColorClassifier {
     }
 
     return ColorClassificationResult(
-      state: CubeState(stickers),
+      state: CubeState(stickers.cast<CubeFace>()),
       centerColors: centerColors,
       recognitionHints: hints,
       uncertainStickerIndices: uncertainIndices,
       issues: issues,
     );
   }
+}
+
+final class _UnassignedSticker {
+  const _UnassignedSticker({
+    required this.globalIndex,
+    required this.candidates,
+  });
+
+  final int globalIndex;
+  final List<ScanColorCandidate> candidates;
 }

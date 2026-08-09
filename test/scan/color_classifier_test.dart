@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/scan/color_classifier.dart';
 import 'package:rubicsolver/scan/color_math.dart';
+import 'package:rubicsolver/scan/scan_color_matcher.dart';
 import 'package:rubicsolver/scan/sticker_sample.dart';
 
 void main() {
@@ -31,26 +34,25 @@ void main() {
       final hint = result.recognitionHints.singleWhere(
         (candidate) => candidate.stickerIndex == 9,
       );
-      final sampleLab = samples[CubeFace.right]![0].rgb.toLab();
-      final assignedDistance = deltaE76(
-        sampleLab,
-        result.centerColors[hint.assignedFace]!.toLab(),
+      final matcher = ScanColorMatcher(
+        capturedFace: CubeFace.right,
+        observedCenter: samples[CubeFace.right]![4].rgb,
       );
-      final alternativeDistance = deltaE76(
-        sampleLab,
-        result.centerColors[hint.alternativeFace]!.toLab(),
+      final candidates = matcher.rank(samples[CubeFace.right]![0].rgb);
+      final assigned = candidates.singleWhere(
+        (candidate) => candidate.face == hint.assignedFace,
+      );
+      final alternative = candidates.firstWhere(
+        (candidate) => candidate.face != hint.assignedFace,
       );
 
       expect(result.uncertainStickerIndices, contains(9));
-      expect({
-        hint.assignedFace,
-        hint.alternativeFace,
-      }, containsAll([CubeFace.up, CubeFace.down]));
+      expect(hint.alternativeFace, alternative.face);
       expect(hint.confidence, lessThan(0.02));
       expect(
         hint.confidence,
         closeTo(
-          (alternativeDistance - assignedDistance) / alternativeDistance,
+          (alternative.cost - assigned.cost) / math.max(alternative.cost, 1),
           1e-9,
         ),
       );
@@ -117,6 +119,70 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  test('globally assigns unlocked stickers to exactly nine of each color', () {
+    final samples = _solvedSamples();
+    samples[CubeFace.left]![0] = StickerSample(
+      rgb: RgbColor(210, 40, 45),
+      luminanceVariance: 0,
+    );
+
+    final result = classifier.classify(samplesByFace: samples);
+    final counts = {
+      for (final face in CubeFace.values)
+        face: result.state.stickers.where((sticker) => sticker == face).length,
+    };
+
+    expect(counts.values, everyElement(9));
+    expect(result.state.stickers[CubeFace.left.startIndex], CubeFace.left);
+  });
+
+  test('locked colors reduce the remaining global capacity', () {
+    final result = classifier.classify(
+      samplesByFace: _solvedSamples(),
+      lockedFacesByFace: const {
+        CubeFace.up: {0: CubeFace.right},
+      },
+    );
+
+    expect(result.state.stickers[0], CubeFace.right);
+    expect(
+      result.state.stickers.where((face) => face == CubeFace.right),
+      hasLength(9),
+    );
+    expect(
+      result.recognitionHints.any((hint) => hint.stickerIndex == 0),
+      isFalse,
+    );
+  });
+
+  test('preserves over-capacity manual locks for validation to reject', () {
+    final result = classifier.classify(
+      samplesByFace: _solvedSamples(),
+      lockedFacesByFace: const {
+        CubeFace.up: {
+          0: CubeFace.right,
+          1: CubeFace.right,
+          2: CubeFace.right,
+          3: CubeFace.right,
+          5: CubeFace.right,
+          6: CubeFace.right,
+          7: CubeFace.right,
+          8: CubeFace.right,
+        },
+        CubeFace.front: {0: CubeFace.right},
+      },
+    );
+
+    expect(
+      result.state.stickers.where((face) => face == CubeFace.right).length,
+      greaterThan(9),
+    );
+    for (final index in [0, 1, 2, 3, 5, 6, 7, 8]) {
+      expect(result.state.stickers[index], CubeFace.right);
+    }
+    expect(result.state.stickers[CubeFace.front.startIndex], CubeFace.right);
   });
 
   test('rejects an incomplete six-face capture', () {
