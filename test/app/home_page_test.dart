@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rubicsolver/app/rubik_solver_app.dart';
 import 'package:rubicsolver/update/update_service.dart';
+import 'package:rubicsolver/update/version_number.dart';
 
 void main() {
   testWidgets('home exposes scan, manual entry and local privacy promise', (
@@ -64,7 +65,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.text(
         '照片仅在本机处理，用于完成采样、颜色识别和校验，不会上传到服务器。'
-        '网络仅用于可选的版本检查和 APK 下载。',
+        '网络仅用于版本检查和用户确认后的 APK 下载。',
       ),
       200,
       scrollable: pageScroll,
@@ -90,6 +91,58 @@ void main() {
     service.complete();
     await tester.pump();
   });
+
+  testWidgets('startup update check shows the update prompt', (tester) async {
+    final service = _ImmediateUpdateService(
+      UpdateCheckResult.updateAvailable(_updateInfo()),
+    );
+    addTearDown(service.dispose);
+
+    await tester.pumpWidget(RubikSolverApp(updateService: service));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('发现新版本'), findsOneWidget);
+    expect(find.textContaining('启动自动更新说明'), findsOneWidget);
+    expect(find.text('开始扫描'), findsOneWidget);
+
+    await tester.tap(find.text('稍后'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('startup update failure stays silent', (tester) async {
+    final service = _ImmediateUpdateService(
+      const UpdateCheckResult.failed('offline'),
+    );
+    addTearDown(service.dispose);
+
+    await tester.pumpWidget(RubikSolverApp(updateService: service));
+    await tester.pumpAndSettle();
+
+    expect(find.text('开始扫描'), findsOneWidget);
+    expect(find.text('发现新版本'), findsNothing);
+  });
+}
+
+UpdateInfo _updateInfo() {
+  return UpdateInfo(
+    currentVersion: VersionNumber.parse('1.1.0+2'),
+    latestVersion: VersionNumber.parse('1.1.1+3'),
+    assetName: 'rubicsolver.apk',
+    downloadUrl: Uri.parse('https://zl.870413.xyz:5443/rubicsolver.apk'),
+    releaseNotes: '启动自动更新说明',
+  );
+}
+
+class _ImmediateUpdateService extends UpdateService {
+  _ImmediateUpdateService(this.result);
+
+  final UpdateCheckResult result;
+
+  @override
+  Future<UpdateCheckResult> checkForUpdates({bool force = false}) async {
+    return result;
+  }
 }
 
 class _PendingUpdateService extends UpdateService {

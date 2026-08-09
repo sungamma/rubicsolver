@@ -117,7 +117,7 @@ class _AboutPageState extends State<AboutPage> {
                     const SizedBox(height: 8),
                     const Text(
                       '照片仅在本机处理，用于完成采样、颜色识别和校验，不会上传到服务器。'
-                      '网络仅用于可选的版本检查和 APK 下载。',
+                      '网络仅用于版本检查和用户确认后的 APK 下载。',
                     ),
                   ],
                 ),

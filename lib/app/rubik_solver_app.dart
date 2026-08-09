@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../update/update_dialog.dart';
 import '../update/update_service.dart';
 import 'app_info.dart';
 import 'home_page.dart';
@@ -21,6 +22,7 @@ class RubikSolverApp extends StatefulWidget {
 }
 
 class _RubikSolverAppState extends State<RubikSolverApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>();
   late final UpdateService _updateService;
   late final bool _ownsUpdateService;
 
@@ -31,7 +33,7 @@ class _RubikSolverAppState extends State<RubikSolverApp> {
     _updateService = widget.updateService ?? UpdateService();
     if (widget.enableStartupUpdateCheck) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_runSilentUpdateCheck());
+        unawaited(_runStartupUpdateCheck());
       });
     }
   }
@@ -44,9 +46,19 @@ class _RubikSolverAppState extends State<RubikSolverApp> {
     super.dispose();
   }
 
-  Future<void> _runSilentUpdateCheck() async {
+  Future<void> _runStartupUpdateCheck() async {
     try {
-      await _updateService.checkForUpdates();
+      final result = await _updateService.checkForUpdates();
+      if (!mounted || result.status != UpdateCheckStatus.updateAvailable) {
+        return;
+      }
+      final dialogContext = _navigatorKey.currentState?.overlay?.context;
+      if (dialogContext == null || !dialogContext.mounted) return;
+      await showUpdateDialog(
+        context: dialogContext,
+        service: _updateService,
+        update: result.update!,
+      );
     } catch (_) {
       // Startup checks are intentionally best-effort and never block the app.
     }
@@ -55,6 +67,7 @@ class _RubikSolverAppState extends State<RubikSolverApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: AppInfo.name,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
