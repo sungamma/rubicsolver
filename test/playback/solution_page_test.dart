@@ -48,6 +48,8 @@ void main() {
     await tester.tap(secondMove);
     await tester.pump();
     expect(find.text('步骤 2/2'), findsOneWidget);
+    final soughtView = tester.widget<Cube3DView>(find.byType(Cube3DView));
+    expect(soughtView.transitionMove, isNull);
 
     await tester.tap(find.text('播放'));
     await tester.pump();
@@ -109,7 +111,7 @@ void main() {
     expect(painter.activeFace, CubeFace.right);
   });
 
-  testWidgets('completed playback clears action highlighting and shows check', (
+  testWidgets('completed playback animates the final move and shows check', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -128,11 +130,37 @@ void main() {
     expect(find.text('复原完成'), findsOneWidget);
     expect(find.byIcon(Icons.rotate_right), findsNothing);
     expect(find.byIcon(Icons.check), findsOneWidget);
+    final view = tester.widget<Cube3DView>(find.byType(Cube3DView));
+    expect(view.move, isNull);
+    expect(view.transitionMove, SolutionMove('R'));
     final canvas = tester.widget<CustomPaint>(
       find.byKey(const ValueKey('cube-3d-canvas')),
     );
     final painter = canvas.painter! as Cube3DPainter;
-    expect(painter.activeFace, isNull);
+    expect(painter.activeFace, CubeFace.right);
+  });
+
+  testWidgets('previous animates the inverse of the removed move', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R'), SolutionMove('U')],
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.byKey(const ValueKey('solution-move-1')));
+    await tester.tap(find.byKey(const ValueKey('solution-move-1')));
+    await tester.pump();
+    await tester.ensureVisible(find.text('上一步'));
+    await tester.tap(find.text('上一步'));
+    await tester.pump();
+
+    final view = tester.widget<Cube3DView>(find.byType(Cube3DView));
+    expect(view.transitionMove, SolutionMove("U'"));
   });
 
   testWidgets('shows a counter-clockwise turn arrow for inverse moves', (

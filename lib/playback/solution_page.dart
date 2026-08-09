@@ -94,9 +94,9 @@ class _SolutionPageState extends State<SolutionPage> {
                       width: double.infinity,
                       child: Cube3DView(
                         state: _player.currentState,
-                        move: _player.currentFace == null
-                            ? null
-                            : _player.currentMove,
+                        move: _player.isComplete ? null : _player.currentMove,
+                        transitionMove: _player.transitionMove,
+                        animateDisplayedMove: false,
                         animationDuration: _cubeAnimationDuration(
                           _player.speed,
                         ),

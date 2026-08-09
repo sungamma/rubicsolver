@@ -17,12 +17,25 @@ class Cube3DView extends StatefulWidget {
     super.key,
     required this.state,
     this.move,
+    this.transitionMove,
+    this.animateDisplayedMove = true,
     this.animationDuration = const Duration(milliseconds: 320),
   });
 
   final CubeState state;
+
+  /// Move displayed by the direction indicator.
   final SolutionMove? move;
+
+  /// Move that transforms the previous state into [state].
+  final SolutionMove? transitionMove;
+
+  /// Backward-compatible fallback for direct callers that only provide [move].
+  final bool animateDisplayedMove;
   final Duration animationDuration;
+
+  SolutionMove? get animationMove =>
+      transitionMove ?? (animateDisplayedMove ? move : null);
 
   @override
   State<Cube3DView> createState() => _Cube3DViewState();
@@ -81,6 +94,7 @@ class _Cube3DViewState extends State<Cube3DView>
   @override
   Widget build(BuildContext context) {
     final move = widget.move;
+    final animationMove = widget.animationMove;
     final moveLabel = move == null
         ? '当前无旋转动作'
         : '当前动作${_positionName(move.face)} ${move.notation}';
@@ -105,8 +119,9 @@ class _Cube3DViewState extends State<Cube3DView>
                       previousState: _previousState,
                       state: widget.state,
                       animationValue: _controller.value,
-                      activeFace: move?.face,
-                      signedQuarterTurns: move?.signedQuarterTurns ?? 1,
+                      activeFace: animationMove?.face,
+                      signedQuarterTurns:
+                          animationMove?.signedQuarterTurns ?? 1,
                       accentColor: Theme.of(context).colorScheme.primary,
                       yaw: _yaw,
                       pitch: _pitch,

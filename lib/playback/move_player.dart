@@ -40,6 +40,7 @@ class MovePlayer extends ChangeNotifier {
   late CubeState _currentState;
   Timer? _timer;
   var _currentIndex = 0;
+  SolutionMove? _transitionMove;
   late Duration _speed;
   var _disposed = false;
 
@@ -67,6 +68,12 @@ class MovePlayer extends ChangeNotifier {
   SolutionMove? get nextMove =>
       _currentIndex < _moves.length ? _moves[_currentIndex] : null;
 
+  /// The move that produced the latest state transition.
+  ///
+  /// This differs from [currentMove] when stepping backwards and is null for
+  /// jumps spanning more than one formula step.
+  SolutionMove? get transitionMove => _transitionMove;
+
   /// Face highlighted by the current action.
   CubeFace? get currentFace => isComplete ? null : currentMove?.face;
 
@@ -76,7 +83,7 @@ class MovePlayer extends ChangeNotifier {
   /// Whether automatic playback is active.
   bool get isPlaying => _timer != null;
 
-  /// Playback interval. Only the supported 500/900/1400 ms presets are
+  /// Playback interval. Only the supported 500/900/1400/2400 ms presets are
   /// accepted so the UI and the state machine cannot drift apart.
   Duration get speed => _speed;
 
@@ -104,7 +111,7 @@ class MovePlayer extends ChangeNotifier {
     if (_currentIndex >= _moves.length) {
       return;
     }
-    _setIndex(_currentIndex + 1);
+    _setIndex(_currentIndex + 1, transitionMove: _moves[_currentIndex]);
   }
 
   /// Return to the previous state, if possible.
@@ -112,7 +119,10 @@ class MovePlayer extends ChangeNotifier {
     if (_currentIndex == 0) {
       return;
     }
-    _setIndex(_currentIndex - 1);
+    _setIndex(
+      _currentIndex - 1,
+      transitionMove: _moves[_currentIndex - 1].inverseMove,
+    );
   }
 
   /// Jump to a completed-move count. Values outside the formula are clamped.
@@ -121,7 +131,12 @@ class MovePlayer extends ChangeNotifier {
     if (target == _currentIndex) {
       return;
     }
-    _setIndex(target);
+    final transitionMove = switch (target - _currentIndex) {
+      1 => _moves[_currentIndex],
+      -1 => _moves[target].inverseMove,
+      _ => null,
+    };
+    _setIndex(target, transitionMove: transitionMove);
   }
 
   /// Start automatic playback. At the end, playback starts over so the user
@@ -131,7 +146,7 @@ class MovePlayer extends ChangeNotifier {
       return;
     }
     if (isComplete) {
-      _setIndex(0);
+      _setIndex(0, transitionMove: null);
     }
     if (isPlaying) {
       return;
@@ -175,10 +190,11 @@ class MovePlayer extends ChangeNotifier {
     });
   }
 
-  void _setIndex(int target) {
+  void _setIndex(int target, {required SolutionMove? transitionMove}) {
     final state = CubeSolver.applyMoves(_initialState, _moves.take(target));
     _currentIndex = target;
     _currentState = state;
+    _transitionMove = transitionMove;
     _notifySafely();
   }
 

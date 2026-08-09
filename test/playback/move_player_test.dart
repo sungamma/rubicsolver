@@ -5,6 +5,29 @@ import 'package:rubicsolver/solver/cube_solver.dart';
 import 'package:rubicsolver/solver/solution_move.dart';
 
 void main() {
+  test('reports the actual move used for each state transition', () {
+    final player = MovePlayer(
+      initial: CubeState.solved(),
+      moves: [SolutionMove('R'), SolutionMove('U')],
+    );
+
+    expect(player.transitionMove, isNull);
+    player.next();
+    expect(player.transitionMove, SolutionMove('R'));
+    player.next();
+    expect(player.isComplete, isTrue);
+    expect(player.transitionMove, SolutionMove('U'));
+
+    player.previous();
+    expect(player.transitionMove, SolutionMove("U'"));
+    player.seek(0);
+    expect(player.transitionMove, SolutionMove("R'"));
+    player.seek(2);
+    expect(player.transitionMove, isNull);
+    player.seek(1);
+    expect(player.transitionMove, SolutionMove("U'"));
+  });
+
   test('seek and previous rebuild exact cube state', () {
     final initial = CubeSolver.applyAlgorithm(CubeState.solved(), 'R U');
     final player = MovePlayer(
