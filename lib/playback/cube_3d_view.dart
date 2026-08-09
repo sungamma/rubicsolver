@@ -290,6 +290,9 @@ class Cube3DPainter extends CustomPainter {
                   -signedQuarterTurns * math.pi / 2 * eased,
                 )
               : geometry;
+          if (!_isFrontFacing(transformed.normal)) {
+            continue;
+          }
           final targetIndex = inActiveLayer && activeFace != null
               ? _indexForGeometry(
                   _rotateSticker(
@@ -349,6 +352,9 @@ class Cube3DPainter extends CustomPainter {
     final bodyFaces = <_ProjectedBodyFace>[];
     for (final face in CubeFace.values) {
       final basis = basisByFace[face]!;
+      if (!_isFrontFacing(basis.normal)) {
+        continue;
+      }
       final center = basis.normal * 1.0;
       final corners = [
         center - basis.u * 1.03 - basis.v * 1.03,
@@ -447,6 +453,8 @@ class Cube3DPainter extends CustomPainter {
   bool _isInActiveLayer(_Vec3 center, _FaceBasis activeBasis) {
     return center.dot(activeBasis.normal) > 0.45;
   }
+
+  bool _isFrontFacing(_Vec3 normal) => _viewTransform(normal).z > 1e-6;
 
   _Vec3 _viewTransform(_Vec3 point) {
     final cosYaw = math.cos(yaw);

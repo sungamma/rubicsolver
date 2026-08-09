@@ -6,6 +6,24 @@ import 'package:rubicsolver/solver/cube_solver.dart';
 import 'package:rubicsolver/solver/solution_move.dart';
 
 void main() {
+  test('culls hidden body faces and stickers before painting', () {
+    final painter = Cube3DPainter(
+      previousState: CubeState.solved(),
+      state: CubeState.solved(),
+      animationValue: 1,
+      activeFace: null,
+      accentColor: Colors.blue,
+    );
+    final canvas = TestRecordingCanvas();
+
+    painter.paint(canvas, const Size(320, 280));
+
+    final drawnPaths = canvas.invocations.where(
+      (recorded) => recorded.invocation.memberName == #drawPath,
+    );
+    expect(drawnPaths, hasLength(60));
+  });
+
   testWidgets('renders an accessible three-dimensional cube canvas', (
     tester,
   ) async {
