@@ -42,6 +42,13 @@ void main() {
     expect(find.text('关于与更新'), findsOneWidget);
     expect(find.text('Wei Xu'), findsOneWidget);
     expect(find.text('sungamma@gmail.com'), findsOneWidget);
+    final pageScroll = find
+        .descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    expect(pageScroll, findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text(
@@ -49,7 +56,7 @@ void main() {
         '许可证全文见 LICENSES/cuber.txt。',
       ),
       200,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: pageScroll,
     );
     expect(find.textContaining('cuber 0.4.0'), findsWidgets);
     expect(find.textContaining('LICENSES/cuber.txt'), findsWidgets);
@@ -60,15 +67,12 @@ void main() {
         '网络仅用于可选的版本检查和 APK 下载。',
       ),
       200,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: pageScroll,
     );
     expect(find.textContaining('照片仅在本机处理'), findsWidgets);
 
-    await tester.scrollUntilVisible(
-      find.text('手动检查更新'),
-      200,
-      scrollable: find.byType(Scrollable).last,
-    );
+    await tester.drag(pageScroll, const Offset(0, -80));
+    await tester.pumpAndSettle();
     expect(find.text('手动检查更新'), findsOneWidget);
   });
 
