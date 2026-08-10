@@ -49,6 +49,7 @@ class ScanPage extends StatefulWidget {
 
 class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   late final ScanSession _session;
+  late final CubeColorScheme _colorScheme;
 
   ScanCameraController? _controller;
   List<StickerSample>? _previewSamples;
@@ -73,6 +74,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _session = widget.session ?? ScanSession(colorScheme: widget.colorScheme);
+    _colorScheme = _session.colorScheme;
     WidgetsBinding.instance.addObserver(this);
     _lifecycleResumed = _isAppResumed;
     unawaited(_requestCameraReconcile());
@@ -351,14 +353,16 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                 mainAxisSpacing: 8,
                 crossAxisSpacing: 8,
                 children: [
-                  for (final face in CubeFace.values)
+                  for (final colorIdentity in CubeFace.values)
                     InkWell(
-                      key: ValueKey('preview-color-${face.name}'),
+                      key: ValueKey('preview-color-${colorIdentity.name}'),
                       borderRadius: BorderRadius.circular(10),
-                      onTap: () => Navigator.of(sheetContext).pop(face),
+                      onTap: () => Navigator.of(
+                        sheetContext,
+                      ).pop(_colorScheme.logicalFaceFor(colorIdentity)),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: CubePalette.colorFor(face),
+                          color: CubePalette.colorFor(colorIdentity),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: Theme.of(sheetContext).colorScheme.outline,
@@ -366,9 +370,9 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                         ),
                         child: Center(
                           child: Text(
-                            '${CubePalette.nameFor(face)} ${face.letter}',
+                            '${CubePalette.nameFor(colorIdentity)} ${colorIdentity.letter}',
                             style: TextStyle(
-                              color: CubePalette.foregroundFor(face),
+                              color: CubePalette.foregroundFor(colorIdentity),
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -566,6 +570,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         MaterialPageRoute<CubeFace>(
           builder: (editorContext) => CubeEditorPage(
             initialState: result.state,
+            colorScheme: _colorScheme,
             recognitionHints: result.recognitionHints,
             uncertainStickerIndices: result.uncertainStickerIndices,
             classificationIssues: result.issues,
@@ -628,7 +633,10 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     }
     await Navigator.of(context).pushReplacement<void, void>(
       MaterialPageRoute<void>(
-        builder: (_) => CubeEditorPage(initialState: CubeState.solved()),
+        builder: (_) => CubeEditorPage(
+          initialState: CubeState.solved(),
+          colorScheme: _colorScheme,
+        ),
       ),
     );
   }
@@ -671,10 +679,12 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         const ScanPreviewClassifier().classify(
           samples: samples,
           currentFace: face,
+          colorScheme: _colorScheme,
         ),
       );
       return _SamplePreview(
         face: face,
+        colorScheme: _colorScheme,
         samples: samples,
         recognizedFaces: recognizedFaces,
         lockedFaces: _lockedPreviewFaces,
@@ -712,11 +722,13 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
             const ScanPreviewClassifier().classify(
               samples: _liveSamples!,
               currentFace: _session.currentFace!,
+              colorScheme: _colorScheme,
             ),
           );
     return _CaptureGuide(
       controller: controller,
       face: _session.currentFace!,
+      colorScheme: _colorScheme,
       completedFaceCount: _session.completedFaceCount,
       cropFraction: widget.faceSampler.cropFraction,
       liveSamples: _liveSamples,
@@ -738,6 +750,7 @@ class _CaptureGuide extends StatelessWidget {
   const _CaptureGuide({
     required this.controller,
     required this.face,
+    required this.colorScheme,
     required this.completedFaceCount,
     required this.cropFraction,
     required this.liveSamples,
@@ -752,6 +765,7 @@ class _CaptureGuide extends StatelessWidget {
 
   final ScanCameraController controller;
   final CubeFace face;
+  final CubeColorScheme colorScheme;
   final int completedFaceCount;
   final double cropFraction;
   final List<StickerSample>? liveSamples;
@@ -771,8 +785,10 @@ class _CaptureGuide extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: _FaceInstruction(
             face: face,
+            colorScheme: colorScheme,
             subtitle:
-                '第 ${completedFaceCount + 1}/6 面 · ${_orientationHint(face)}',
+                '第 ${completedFaceCount + 1}/6 面 · '
+                '${_orientationHint(face, colorScheme)}',
           ),
         ),
         Expanded(
@@ -805,6 +821,7 @@ class _CaptureGuide extends StatelessWidget {
                           _LiveRecognitionGrid(
                             samples: liveSamples!,
                             faces: recognizedFaces!,
+                            colorScheme: colorScheme,
                             lockedFaces: lockedFaces,
                             cropFraction: cropFraction,
                             onToggleColorLock: onToggleColorLock,
@@ -874,6 +891,7 @@ class _LiveRecognitionGrid extends StatelessWidget {
   const _LiveRecognitionGrid({
     required this.samples,
     required this.faces,
+    required this.colorScheme,
     required this.lockedFaces,
     required this.cropFraction,
     required this.onToggleColorLock,
@@ -881,6 +899,7 @@ class _LiveRecognitionGrid extends StatelessWidget {
 
   final List<StickerSample> samples;
   final List<CubeFace> faces;
+  final CubeColorScheme colorScheme;
   final Map<int, CubeFace> lockedFaces;
   final double cropFraction;
   final ValueChanged<int> onToggleColorLock;
@@ -903,7 +922,8 @@ class _LiveRecognitionGrid extends StatelessWidget {
             final face = faces[index];
             final lowQuality = samples[index].isLowQuality;
             final locked = lockedFaces.containsKey(index);
-            final color = CubePalette.colorFor(face);
+            final colorIdentity = colorScheme.colorIdentityFor(face);
+            final color = CubePalette.colorFor(colorIdentity);
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => onToggleColorLock(index),
@@ -935,9 +955,9 @@ class _LiveRecognitionGrid extends StatelessWidget {
                           ],
                         ),
                         child: Text(
-                          CubePalette.nameFor(face).substring(0, 1),
+                          CubePalette.nameFor(colorIdentity).substring(0, 1),
                           style: TextStyle(
-                            color: CubePalette.foregroundFor(face),
+                            color: CubePalette.foregroundFor(colorIdentity),
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
                           ),
@@ -984,6 +1004,7 @@ class _LiveRecognitionGrid extends StatelessWidget {
 class _SamplePreview extends StatelessWidget {
   const _SamplePreview({
     required this.face,
+    required this.colorScheme,
     required this.samples,
     required this.recognizedFaces,
     required this.lockedFaces,
@@ -993,6 +1014,7 @@ class _SamplePreview extends StatelessWidget {
   });
 
   final CubeFace face;
+  final CubeColorScheme colorScheme;
   final List<StickerSample> samples;
   final List<CubeFace> recognizedFaces;
   final Map<int, CubeFace> lockedFaces;
@@ -1011,7 +1033,11 @@ class _SamplePreview extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _FaceInstruction(face: face, subtitle: '检查九格取色结果'),
+              _FaceInstruction(
+                face: face,
+                colorScheme: colorScheme,
+                subtitle: '检查九格取色结果',
+              ),
               const SizedBox(height: 16),
               AspectRatio(
                 aspectRatio: 1,
@@ -1026,13 +1052,16 @@ class _SamplePreview extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final sample = samples[index];
                     final recognizedFace = recognizedFaces[index];
+                    final colorIdentity = colorScheme.colorIdentityFor(
+                      recognizedFace,
+                    );
                     return InkWell(
                       key: ValueKey('preview-sticker-$index'),
                       borderRadius: BorderRadius.circular(8),
                       onTap: index == 4 ? null : () => onEditColor(index),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: CubePalette.colorFor(recognizedFace),
+                          color: CubePalette.colorFor(colorIdentity),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: sample.isLowQuality
@@ -1045,11 +1074,9 @@ class _SamplePreview extends StatelessWidget {
                           alignment: Alignment.center,
                           children: [
                             Text(
-                              CubePalette.nameFor(recognizedFace),
+                              CubePalette.nameFor(colorIdentity),
                               style: TextStyle(
-                                color: CubePalette.foregroundFor(
-                                  recognizedFace,
-                                ),
+                                color: CubePalette.foregroundFor(colorIdentity),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -1113,18 +1140,24 @@ class _SamplePreview extends StatelessWidget {
 }
 
 class _FaceInstruction extends StatelessWidget {
-  const _FaceInstruction({required this.face, required this.subtitle});
+  const _FaceInstruction({
+    required this.face,
+    required this.colorScheme,
+    required this.subtitle,
+  });
 
   final CubeFace face;
+  final CubeColorScheme colorScheme;
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
+    final colorIdentity = colorScheme.colorIdentityFor(face);
     return Row(
       children: [
         CircleAvatar(
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+          backgroundColor: CubePalette.colorFor(colorIdentity),
+          foregroundColor: CubePalette.foregroundFor(colorIdentity),
           child: Text(face.letter),
         ),
         const SizedBox(width: 12),
@@ -1133,13 +1166,15 @@ class _FaceInstruction extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '将${_faceName(face)}中心对准九格',
+                '将${_faceName(face, colorScheme)}中心对准九格',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               Text(subtitle),
-              const Text(
-                '标准方向：白色中心 = U，绿色中心 = F',
-                style: TextStyle(fontSize: 12),
+              Text(
+                '标准方向：'
+                '${CubePalette.nameFor(colorScheme.colorIdentityFor(CubeFace.up))}中心 = U，'
+                '${CubePalette.nameFor(colorScheme.colorIdentityFor(CubeFace.front))}中心 = F',
+                style: const TextStyle(fontSize: 12),
               ),
             ],
           ),
@@ -1309,24 +1344,17 @@ String _cameraErrorMessage(Object error) {
   return '无法启动相机，请重试或改用手动录入。';
 }
 
-String _faceName(CubeFace face) {
-  return switch (face) {
-    CubeFace.up => '白色 U 面',
-    CubeFace.right => '红色 R 面',
-    CubeFace.front => '绿色 F 面',
-    CubeFace.down => '黄色 D 面',
-    CubeFace.left => '橙色 L 面',
-    CubeFace.back => '蓝色 B 面',
-  };
+String _faceName(CubeFace face, CubeColorScheme colorScheme) {
+  final colorIdentity = colorScheme.colorIdentityFor(face);
+  return '${CubePalette.nameFor(colorIdentity)} ${face.letter} 面';
 }
 
-String _orientationHint(CubeFace face) {
-  return switch (face) {
-    CubeFace.up => '蓝色边朝上',
-    CubeFace.right => '白色边朝上',
-    CubeFace.front => '白色边朝上',
-    CubeFace.down => '绿色边朝上',
-    CubeFace.left => '白色边朝上',
-    CubeFace.back => '白色边朝上',
+String _orientationHint(CubeFace face, CubeColorScheme colorScheme) {
+  final topEdgeFace = switch (face) {
+    CubeFace.up => CubeFace.back,
+    CubeFace.down => CubeFace.front,
+    _ => CubeFace.up,
   };
+  final colorIdentity = colorScheme.colorIdentityFor(topEdgeFace);
+  return '${CubePalette.nameFor(colorIdentity)}边朝上';
 }

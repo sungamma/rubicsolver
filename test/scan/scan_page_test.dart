@@ -4,7 +4,9 @@ import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_color_scheme.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
+import 'package:rubicsolver/cube/cube_palette.dart';
 import 'package:rubicsolver/scan/camera_frame_sampler.dart';
 import 'package:rubicsolver/scan/color_math.dart';
 import 'package:rubicsolver/scan/scan_camera.dart';
@@ -74,6 +76,30 @@ void main() {
       expect(find.byIcon(Icons.flash_on), findsNothing);
     },
   );
+
+  testWidgets('uses configured colors in face and orientation guidance', (
+    tester,
+  ) async {
+    final colorScheme = CubeColorScheme.standard.swapColor(
+      CubeFace.up,
+      CubeFace.down,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanPage(
+          colorScheme: colorScheme,
+          cameraDiscovery: () async => const [_backCamera],
+          cameraFactory: _FakeScanCameraController.new,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('黄色 U 面'), findsOneWidget);
+    expect(find.textContaining('蓝色边朝上'), findsOneWidget);
+    expect(find.textContaining('黄色中心 = U'), findsOneWidget);
+    expect(find.textContaining('绿色中心 = F'), findsOneWidget);
+  });
 
   testWidgets('shows the fixed color orientation for every scan face', (
     tester,
@@ -197,6 +223,68 @@ void main() {
 
     expect(session.lockedFacesByFace[CubeFace.up]![0], CubeFace.up);
     expect(session.lockedFacesByFace[CubeFace.up]![1], CubeFace.right);
+  });
+
+  testWidgets('uses configured display colors and maps manual picks to logic', (
+    tester,
+  ) async {
+    final colorScheme = CubeColorScheme.standard.swapColor(
+      CubeFace.up,
+      CubeFace.down,
+    );
+    final controllers = <_FakeScanCameraController>[];
+    final session = ScanSession(colorScheme: colorScheme);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanPage(
+          colorScheme: colorScheme,
+          cameraDiscovery: () async => const [_backCamera],
+          cameraFactory: (description) {
+            final controller = _FakeScanCameraController(
+              description,
+              picture: XFile.fromData(
+                Uint8List.fromList([1, 2, 3]),
+                name: 'capture.jpg',
+              ),
+            );
+            controllers.add(controller);
+            return controller;
+          },
+          sampleLiveFrame: (_) =>
+              _samplesFor(CubeFace.up, colorScheme: colorScheme),
+          sampleInBackground: (_) async =>
+              _samplesFor(CubeFace.up, colorScheme: colorScheme),
+          session: session,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controllers.single.emitFrame(_emptyFrame());
+    await tester.pump();
+
+    expect(find.text('黄'), findsNWidgets(9));
+    final dot = tester.widget<Container>(
+      find.descendant(
+        of: find.byKey(const ValueKey('live-recognition-dot-0')),
+        matching: find.byType(Container),
+      ),
+    );
+    final dotDecoration = dot.decoration! as BoxDecoration;
+    expect(dotDecoration.color, CubePalette.colorFor(CubeFace.down));
+
+    await tester.tap(find.text('拍摄此面'));
+    await tester.pumpAndSettle();
+    expect(find.text('黄色'), findsNWidgets(9));
+    await tester.tap(find.byKey(const ValueKey('preview-sticker-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('preview-color-up')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('接受此面'));
+    await tester.pump();
+    await tester.tap(find.text('接受此面'));
+    await tester.pumpAndSettle();
+
+    expect(session.lockedFacesByFace[CubeFace.up]![1], CubeFace.down);
   });
 
   testWidgets('completed review stays camera-free and rescan opens camera', (
@@ -634,7 +722,10 @@ ScanCameraFrame _emptyFrame() => ScanCameraFrame(
   ],
 );
 
-List<StickerSample> _samplesFor(CubeFace face) {
+List<StickerSample> _samplesFor(
+  CubeFace face, {
+  CubeColorScheme colorScheme = CubeColorScheme.standard,
+}) {
   final colors = {
     CubeFace.up: RgbColor(245, 245, 245),
     CubeFace.right: RgbColor(220, 35, 45),
@@ -645,7 +736,10 @@ List<StickerSample> _samplesFor(CubeFace face) {
   };
   return List.generate(
     9,
-    (_) => StickerSample(rgb: colors[face]!, luminanceVariance: 0),
+    (_) => StickerSample(
+      rgb: colors[colorScheme.colorIdentityFor(face)]!,
+      luminanceVariance: 0,
+    ),
   );
 }
 
