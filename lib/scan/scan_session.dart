@@ -1,11 +1,15 @@
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
 import 'color_classifier.dart';
 import 'sticker_sample.dart';
 
 final class ScanSession {
-  ScanSession({ColorClassifier classifier = const ColorClassifier()})
-    : _classifier = classifier;
+  ScanSession({
+    this.colorScheme = CubeColorScheme.standard,
+    ColorClassifier classifier = const ColorClassifier(),
+  }) : _classifier = classifier;
 
+  final CubeColorScheme colorScheme;
   final ColorClassifier _classifier;
   final Map<CubeFace, List<StickerSample>> _samplesByFace = {};
   final Map<CubeFace, Map<int, CubeFace>> _lockedFacesByFace = {};
@@ -69,6 +73,7 @@ final class ScanSession {
     return _classifier.classify(
       samplesByFace: _samplesByFace,
       lockedFacesByFace: _lockedFacesByFace,
+      colorScheme: colorScheme,
     );
   }
 }

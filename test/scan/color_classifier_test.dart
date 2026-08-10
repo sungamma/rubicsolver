@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_color_scheme.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/scan/color_classifier.dart';
@@ -10,6 +11,21 @@ import 'package:rubicsolver/scan/sticker_sample.dart';
 
 void main() {
   const classifier = ColorClassifier();
+
+  test('classifies rearranged physical colors as logical faces', () {
+    final colorScheme = CubeColorScheme.standard
+        .swapColor(CubeFace.up, CubeFace.down)
+        .swapColor(CubeFace.front, CubeFace.back);
+
+    final result = classifier.classify(
+      samplesByFace: _solvedSamples(colorScheme: colorScheme),
+      colorScheme: colorScheme,
+    );
+
+    expect(result.state, CubeState.solved());
+    expect(result.state.stickers[CubeFace.up.centerIndex], CubeFace.up);
+    expect(result.state.stickers[CubeFace.front.centerIndex], CubeFace.front);
+  });
 
   test('classifies a solved cube against its six scanned centers', () {
     final result = classifier.classify(samplesByFace: _solvedSamples());
@@ -210,12 +226,17 @@ void main() {
   });
 }
 
-Map<CubeFace, List<StickerSample>> _solvedSamples() {
+Map<CubeFace, List<StickerSample>> _solvedSamples({
+  CubeColorScheme colorScheme = CubeColorScheme.standard,
+}) {
   return {
     for (final face in CubeFace.values)
       face: List.generate(
         9,
-        (_) => StickerSample(rgb: _colors[face]!, luminanceVariance: 0),
+        (_) => StickerSample(
+          rgb: _colors[colorScheme.colorIdentityFor(face)]!,
+          luminanceVariance: 0,
+        ),
       ),
   };
 }

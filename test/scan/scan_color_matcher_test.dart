@@ -1,10 +1,29 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_color_scheme.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_palette.dart';
 import 'package:rubicsolver/scan/color_math.dart';
 import 'package:rubicsolver/scan/scan_color_matcher.dart';
 
 void main() {
+  test('maps palette identities back to configured logical faces', () {
+    final colorScheme = CubeColorScheme.standard
+        .swapColor(CubeFace.up, CubeFace.down)
+        .swapColor(CubeFace.front, CubeFace.back);
+    final matcher = ScanColorMatcher(
+      capturedFace: CubeFace.up,
+      observedCenter: _standardRgb(CubeFace.down),
+      colorScheme: colorScheme,
+    );
+
+    expect(matcher.rank(_standardRgb(CubeFace.down)).first.face, CubeFace.up);
+    expect(matcher.rank(_standardRgb(CubeFace.up)).first.face, CubeFace.down);
+    expect(
+      matcher.rank(_standardRgb(CubeFace.back)).first.face,
+      CubeFace.front,
+    );
+  });
+
   test('ranks every fixed palette color against the standard references', () {
     final matcher = ScanColorMatcher(
       capturedFace: CubeFace.up,

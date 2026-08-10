@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
 import '../cube/cube_state.dart';
 import '../cube/cube_validation.dart';
@@ -51,6 +52,7 @@ final class ColorClassifier {
   ColorClassificationResult classify({
     required Map<CubeFace, List<StickerSample>> samplesByFace,
     Map<CubeFace, Map<int, CubeFace>> lockedFacesByFace = const {},
+    CubeColorScheme colorScheme = CubeColorScheme.standard,
   }) {
     for (final face in CubeFace.values) {
       if (samplesByFace[face]?.length != 9) {
@@ -102,6 +104,7 @@ final class ColorClassifier {
       final matcher = ScanColorMatcher(
         capturedFace: capturedFace,
         observedCenter: samples[4].rgb,
+        colorScheme: colorScheme,
       );
       for (var localIndex = 0; localIndex < samples.length; localIndex++) {
         final globalIndex = capturedFace.startIndex + localIndex;

@@ -1,3 +1,4 @@
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
 import 'scan_color_matcher.dart';
 import 'sticker_sample.dart';
@@ -8,6 +9,7 @@ final class ScanPreviewClassifier {
   List<CubeFace> classify({
     required List<StickerSample> samples,
     required CubeFace currentFace,
+    CubeColorScheme colorScheme = CubeColorScheme.standard,
     Map<CubeFace, List<StickerSample>> capturedSamplesByFace = const {},
   }) {
     if (samples.length != 9) {
@@ -17,6 +19,7 @@ final class ScanPreviewClassifier {
     final matcher = ScanColorMatcher(
       capturedFace: currentFace,
       observedCenter: samples[4].rgb,
+      colorScheme: colorScheme,
     );
 
     return List.unmodifiable([

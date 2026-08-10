@@ -1,3 +1,4 @@
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
 import '../cube/cube_palette.dart';
 import 'color_math.dart';
@@ -13,13 +14,15 @@ final class ScanColorMatcher {
   ScanColorMatcher({
     required this.capturedFace,
     required RgbColor observedCenter,
+    this.colorScheme = CubeColorScheme.standard,
     this.maximumLightnessShift = 18,
     this.maximumChromaShift = 14,
   }) {
     _validateLimit(maximumLightnessShift, 'maximumLightnessShift');
     _validateLimit(maximumChromaShift, 'maximumChromaShift');
 
-    final standardCenter = _standardLabs[capturedFace]!;
+    final standardCenter =
+        _standardLabs[colorScheme.colorIdentityFor(capturedFace)]!;
     final observedCenterLab = observedCenter.toLab();
     _lightnessShift = _limit(
       standardCenter.l - observedCenterLab.l,
@@ -36,6 +39,7 @@ final class ScanColorMatcher {
   }
 
   final CubeFace capturedFace;
+  final CubeColorScheme colorScheme;
   final double maximumLightnessShift;
   final double maximumChromaShift;
 
@@ -56,10 +60,10 @@ final class ScanColorMatcher {
     );
     final candidates =
         [
-          for (final face in CubeFace.values)
+          for (final colorIdentity in CubeFace.values)
             ScanColorCandidate(
-              face: face,
-              cost: deltaE2000(correctedLab, _standardLabs[face]!),
+              face: colorScheme.logicalFaceFor(colorIdentity),
+              cost: deltaE2000(correctedLab, _standardLabs[colorIdentity]!),
             ),
         ]..sort((first, second) {
           final costOrder = first.cost.compareTo(second.cost);

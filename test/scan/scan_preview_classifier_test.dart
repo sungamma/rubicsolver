@@ -1,10 +1,29 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_color_scheme.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/scan/color_math.dart';
 import 'package:rubicsolver/scan/scan_preview_classifier.dart';
 import 'package:rubicsolver/scan/sticker_sample.dart';
 
 void main() {
+  test('returns logical faces for a rearranged color scheme', () {
+    final colorScheme = CubeColorScheme.standard.swapColor(
+      CubeFace.up,
+      CubeFace.down,
+    );
+    final samples = List.generate(9, (_) => _sample(252, 210, 2));
+    samples[0] = _sample(250, 250, 250);
+
+    final faces = const ScanPreviewClassifier().classify(
+      samples: samples,
+      currentFace: CubeFace.up,
+      colorScheme: colorScheme,
+    );
+
+    expect(faces[4], CubeFace.up);
+    expect(faces[0], CubeFace.down);
+  });
+
   test('maps camera samples to calibrated cube colors', () {
     final samples = [
       _sample(250, 250, 250),

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_color_scheme.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/scan/color_math.dart';
@@ -6,6 +7,20 @@ import 'package:rubicsolver/scan/scan_session.dart';
 import 'package:rubicsolver/scan/sticker_sample.dart';
 
 void main() {
+  test('keeps one color scheme for capture and final classification', () {
+    final colorScheme = CubeColorScheme.standard
+        .swapColor(CubeFace.up, CubeFace.down)
+        .swapColor(CubeFace.front, CubeFace.back);
+    final session = ScanSession(colorScheme: colorScheme);
+
+    for (final face in CubeFace.values) {
+      session.acceptCurrent(_samplesFor(face, colorScheme: colorScheme));
+    }
+
+    expect(session.colorScheme, colorScheme);
+    expect(session.classify().state, CubeState.solved());
+  });
+
   test('captures faces in URFDLB order and reports progress', () {
     final session = ScanSession();
 
@@ -80,7 +95,10 @@ void main() {
   });
 }
 
-List<StickerSample> _samplesFor(CubeFace face) {
+List<StickerSample> _samplesFor(
+  CubeFace face, {
+  CubeColorScheme colorScheme = CubeColorScheme.standard,
+}) {
   final colors = {
     CubeFace.up: RgbColor(245, 245, 245),
     CubeFace.right: RgbColor(220, 35, 45),
@@ -91,6 +109,9 @@ List<StickerSample> _samplesFor(CubeFace face) {
   };
   return List.generate(
     9,
-    (_) => StickerSample(rgb: colors[face]!, luminanceVariance: 0),
+    (_) => StickerSample(
+      rgb: colors[colorScheme.colorIdentityFor(face)]!,
+      luminanceVariance: 0,
+    ),
   );
 }
