@@ -1,11 +1,16 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/app/home_page.dart';
 import 'package:rubicsolver/app/rubik_solver_app.dart';
+import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/editor/cube_editor_page.dart';
 import 'package:rubicsolver/scan/scan_page.dart';
+import 'package:rubicsolver/solver/cube_scrambler.dart';
+import 'package:rubicsolver/solver/cube_solver.dart';
 import 'package:rubicsolver/update/update_service.dart';
 import 'package:rubicsolver/update/version_number.dart';
 
@@ -19,9 +24,55 @@ void main() {
 
     expect(find.text('开始扫描'), findsOneWidget);
     expect(find.text('手动录入'), findsOneWidget);
+    expect(find.text('随机魔方'), findsOneWidget);
     expect(find.text('配置六面配色'), findsOneWidget);
     expect(find.textContaining('照片仅在本机处理'), findsOneWidget);
     expect(find.textContaining('Kociemba'), findsOneWidget);
+  });
+
+  testWidgets('random cube opens one matching state and formula', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(scrambler: CubeScrambler(random: Random(17))),
+      ),
+    );
+
+    await tester.tap(find.text('随机魔方'));
+    await tester.pumpAndSettle();
+
+    final editor = tester.widget<CubeEditorPage>(find.byType(CubeEditorPage));
+    expect(editor.scrambleMoves.length, inInclusiveRange(18, 25));
+    expect(
+      editor.initialState,
+      CubeSolver.applyMoves(CubeState.solved(), editor.scrambleMoves),
+    );
+    expect(find.text('随机打乱'), findsOneWidget);
+  });
+
+  testWidgets('random cube keeps the configured display scheme', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(scrambler: CubeScrambler(random: Random(23))),
+      ),
+    );
+
+    await tester.tap(find.text('配置六面配色'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('scheme-face-U')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('黄色').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('随机魔方'));
+    await tester.pumpAndSettle();
+
+    final editor = tester.widget<CubeEditorPage>(find.byType(CubeEditorPage));
+    expect(editor.colorScheme.colorIdentityFor(CubeFace.up), CubeFace.down);
   });
 
   testWidgets('applies one configured scheme to scan and manual entry', (

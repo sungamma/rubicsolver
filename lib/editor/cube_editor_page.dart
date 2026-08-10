@@ -13,9 +13,10 @@ import 'cube_display_colors.dart';
 import 'cube_net.dart';
 import '../playback/solution_page.dart';
 import '../solver/cube_solver.dart';
+import '../solver/solution_move.dart';
 
 class CubeEditorPage extends StatefulWidget {
-  const CubeEditorPage({
+  CubeEditorPage({
     super.key,
     required this.initialState,
     this.onSolve,
@@ -26,7 +27,8 @@ class CubeEditorPage extends StatefulWidget {
     this.onRescanFace,
     this.solver = const CubeSolver(),
     this.colorScheme = CubeColorScheme.standard,
-  });
+    Iterable<SolutionMove> scrambleMoves = const [],
+  }) : scrambleMoves = List.unmodifiable(scrambleMoves);
 
   final CubeState initialState;
   final ValueChanged<CubeState>? onSolve;
@@ -37,6 +39,7 @@ class CubeEditorPage extends StatefulWidget {
   final ValueChanged<CubeFace>? onRescanFace;
   final CubeSolver solver;
   final CubeColorScheme colorScheme;
+  final List<SolutionMove> scrambleMoves;
 
   @override
   State<CubeEditorPage> createState() => _CubeEditorPageState();
@@ -278,6 +281,10 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (widget.scrambleMoves.isNotEmpty) ...[
+                  _RandomScrambleCard(moves: widget.scrambleMoves),
+                  const SizedBox(height: 8),
+                ],
                 CubeNet(
                   state: _state,
                   highlightedStickerIndices: highlighted,
@@ -391,6 +398,38 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
               ? () => unawaited(_startSolve())
               : null,
           child: const Text('开始求解'),
+        ),
+      ),
+    );
+  }
+}
+
+class _RandomScrambleCard extends StatelessWidget {
+  const _RandomScrambleCard({required this.moves});
+
+  final List<SolutionMove> moves;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const ValueKey('random-scramble-card'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('随机打乱', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            SelectableText(
+              moves.map((move) => move.notation).join(' '),
+              key: const ValueKey('random-scramble-formula'),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                fontFamily: 'monospace',
+                height: 1.25,
+              ),
+            ),
+          ],
         ),
       ),
     );

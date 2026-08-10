@@ -217,6 +217,59 @@ void main() {
     expect(avatar.backgroundColor, CubePalette.colorFor(CubeFace.down));
   });
 
+  testWidgets('shows and retains the random scramble formula while editing', (
+    tester,
+  ) async {
+    final moves = [SolutionMove('R'), SolutionMove("U'"), SolutionMove('F2')];
+    final state = CubeSolver.applyMoves(CubeState.solved(), moves);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(initialState: state, scrambleMoves: moves),
+      ),
+    );
+
+    expect(find.text('随机打乱'), findsOneWidget);
+    expect(find.text("R U' F2"), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('sticker-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('上面颜色').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('随机打乱'), findsOneWidget);
+    expect(find.text("R U' F2"), findsOneWidget);
+  });
+
+  testWidgets('hides an empty scramble and fits the formula at 320dp', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final moves = List.generate(
+      25,
+      (index) => SolutionMove(index.isEven ? 'R' : "U'"),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(
+          initialState: CubeSolver.applyMoves(CubeState.solved(), moves),
+          scrambleMoves: moves,
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('random-scramble-card')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(
+      MaterialApp(home: CubeEditorPage(initialState: CubeState.solved())),
+    );
+    expect(find.byKey(const ValueKey('random-scramble-card')), findsNothing);
+  });
+
   testWidgets('uncertain sticker blocks solving until its color is confirmed', (
     tester,
   ) async {

@@ -5,14 +5,16 @@ import '../cube/cube_state.dart';
 import '../editor/cube_editor_page.dart';
 import '../scan/scan_page.dart';
 import '../settings/about_page.dart';
+import '../solver/cube_scrambler.dart';
 import '../update/update_service.dart';
 import 'app_info.dart';
 import 'cube_color_scheme_dialog.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.updateService});
+  const HomePage({super.key, this.updateService, this.scrambler});
 
   final UpdateService? updateService;
+  final CubeScrambler? scrambler;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -20,6 +22,13 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   CubeColorScheme _colorScheme = CubeColorScheme.standard;
+  late final CubeScrambler _scrambler;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrambler = widget.scrambler ?? CubeScrambler();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +56,11 @@ class _HomePageState extends State<HomePage> {
                 ),
                 icon: const Icon(Icons.camera_alt_outlined),
                 label: const Text('开始扫描'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: () => _openRandomCube(context),
+                icon: const Icon(Icons.shuffle),
+                label: const Text('随机魔方'),
               ),
               OutlinedButton.icon(
                 onPressed: () => Navigator.of(context).push(
@@ -101,6 +115,8 @@ class _HomePageState extends State<HomePage> {
                             Expanded(child: actions[0]),
                             const SizedBox(width: 12),
                             Expanded(child: actions[1]),
+                            const SizedBox(width: 12),
+                            Expanded(child: actions[2]),
                           ],
                         )
                       else
@@ -110,6 +126,8 @@ class _HomePageState extends State<HomePage> {
                             actions[0],
                             const SizedBox(height: 12),
                             actions[1],
+                            const SizedBox(height: 12),
+                            actions[2],
                           ],
                         ),
                       const SizedBox(height: 24),
@@ -156,6 +174,19 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _colorScheme = result;
     });
+  }
+
+  void _openRandomCube(BuildContext context) {
+    final scramble = _scrambler.generate();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CubeEditorPage(
+          initialState: scramble.state,
+          scrambleMoves: scramble.moves,
+          colorScheme: _colorScheme,
+        ),
+      ),
+    );
   }
 }
 
