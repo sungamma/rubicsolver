@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_color_scheme.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_palette.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
@@ -184,6 +185,36 @@ void main() {
       find.descendant(of: upOption, matching: find.byType(CircleAvatar)),
     );
     expect(avatar.backgroundColor, CubePalette.colorFor(CubeFace.up));
+  });
+
+  testWidgets('renders logical stickers with configured display colors', (
+    tester,
+  ) async {
+    final colorScheme = CubeColorScheme.standard.swapColor(
+      CubeFace.up,
+      CubeFace.down,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CubeEditorPage(
+          initialState: CubeState.solved(),
+          colorScheme: colorScheme,
+        ),
+      ),
+    );
+
+    final sticker = tester.widget<Material>(
+      find.byKey(const ValueKey('sticker-0')),
+    );
+    expect(sticker.color, CubePalette.colorFor(CubeFace.down));
+
+    await tester.tap(find.byKey(const ValueKey('sticker-0')));
+    await tester.pumpAndSettle();
+    final upOption = find.widgetWithText(ListTile, '上面颜色').last;
+    final avatar = tester.widget<CircleAvatar>(
+      find.descendant(of: upOption, matching: find.byType(CircleAvatar)),
+    );
+    expect(avatar.backgroundColor, CubePalette.colorFor(CubeFace.down));
   });
 
   testWidgets('uncertain sticker blocks solving until its color is confirmed', (

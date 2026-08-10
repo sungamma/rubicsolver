@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
 import '../cube/cube_palette.dart';
 import '../cube/cube_state.dart';
@@ -20,6 +21,7 @@ class Cube3DView extends StatefulWidget {
     this.transitionMove,
     this.animateDisplayedMove = true,
     this.animationDuration = const Duration(milliseconds: 320),
+    this.colorScheme = CubeColorScheme.standard,
   });
 
   final CubeState state;
@@ -33,6 +35,7 @@ class Cube3DView extends StatefulWidget {
   /// Backward-compatible fallback for direct callers that only provide [move].
   final bool animateDisplayedMove;
   final Duration animationDuration;
+  final CubeColorScheme colorScheme;
 
   SolutionMove? get animationMove =>
       transitionMove ?? (animateDisplayedMove ? move : null);
@@ -123,6 +126,7 @@ class _Cube3DViewState extends State<Cube3DView>
                       signedQuarterTurns:
                           animationMove?.signedQuarterTurns ?? 1,
                       accentColor: Theme.of(context).colorScheme.primary,
+                      colorScheme: widget.colorScheme,
                       yaw: _yaw,
                       pitch: _pitch,
                     ),
@@ -245,6 +249,7 @@ class Cube3DPainter extends CustomPainter {
     required this.animationValue,
     required this.activeFace,
     required this.accentColor,
+    this.colorScheme = CubeColorScheme.standard,
     this.signedQuarterTurns = 1,
     this.yaw = defaultCubeYaw,
     this.pitch = defaultCubePitch,
@@ -255,6 +260,7 @@ class Cube3DPainter extends CustomPainter {
   final double animationValue;
   final CubeFace? activeFace;
   final Color accentColor;
+  final CubeColorScheme colorScheme;
   final int signedQuarterTurns;
   final double yaw;
   final double pitch;
@@ -304,10 +310,10 @@ class Cube3DPainter extends CustomPainter {
                 )
               : index;
           final previousColor = CubePalette.colorFor(
-            previousState.stickers[index],
+            colorScheme.colorIdentityFor(previousState.stickers[index]),
           );
           final currentColor = CubePalette.colorFor(
-            state.stickers[targetIndex],
+            colorScheme.colorIdentityFor(state.stickers[targetIndex]),
           );
           final color = activeFace == null
               ? currentColor
@@ -556,6 +562,7 @@ class Cube3DPainter extends CustomPainter {
         oldDelegate.activeFace != activeFace ||
         oldDelegate.signedQuarterTurns != signedQuarterTurns ||
         oldDelegate.accentColor != accentColor ||
+        oldDelegate.colorScheme != colorScheme ||
         oldDelegate.yaw != yaw ||
         oldDelegate.pitch != pitch;
   }

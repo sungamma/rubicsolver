@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_color_scheme.dart';
+import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/playback/cube_3d_view.dart';
 import 'package:rubicsolver/solver/cube_solver.dart';
@@ -53,6 +55,25 @@ void main() {
     expect(painter.state, CubeState.solved());
     expect(tester.takeException(), isNull);
     semantics.dispose();
+  });
+
+  testWidgets('passes the color scheme into the painter', (tester) async {
+    final colorScheme = CubeColorScheme.standard.swapColor(
+      CubeFace.up,
+      CubeFace.down,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Cube3DView(state: CubeState.solved(), colorScheme: colorScheme),
+        ),
+      ),
+    );
+
+    final canvas = tester.widget<CustomPaint>(
+      find.byKey(const ValueKey('cube-3d-canvas')),
+    );
+    expect((canvas.painter! as Cube3DPainter).colorScheme, colorScheme);
   });
 
   testWidgets('animates to the latest cube state', (tester) async {

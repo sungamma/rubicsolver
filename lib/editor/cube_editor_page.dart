@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
+import '../cube/cube_palette.dart';
 import '../cube/cube_state.dart';
 import '../cube/cube_validation.dart';
 import '../scan/color_classifier.dart';
@@ -90,14 +91,19 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                 backgroundColor: CubeDisplayColors.colorFor(
                   face,
                   centerColors: widget.centerColors,
+                  colorScheme: widget.colorScheme,
                 ),
                 foregroundColor: CubeDisplayColors.foregroundFor(
                   face,
                   centerColors: widget.centerColors,
+                  colorScheme: widget.colorScheme,
                 ),
                 child: Text(face.letter),
               ),
               title: Text(_colorOptionLabel(face)),
+              subtitle: Text(
+                '实际颜色：${CubePalette.nameFor(widget.colorScheme.colorIdentityFor(face))}',
+              ),
               trailing: _state.stickers[index] == face
                   ? const Icon(Icons.check)
                   : null,
@@ -158,10 +164,12 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                 backgroundColor: CubeDisplayColors.colorFor(
                   candidate,
                   centerColors: widget.centerColors,
+                  colorScheme: widget.colorScheme,
                 ),
                 foregroundColor: CubeDisplayColors.foregroundFor(
                   candidate,
                   centerColors: widget.centerColors,
+                  colorScheme: widget.colorScheme,
                 ),
                 child: Text(candidate.letter),
               ),
@@ -203,6 +211,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
             initialState: solveState,
             moves: moves,
             centerColors: widget.centerColors,
+            colorScheme: widget.colorScheme,
           ),
         ),
       );
@@ -273,6 +282,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                   state: _state,
                   highlightedStickerIndices: highlighted,
                   centerColors: widget.centerColors,
+                  colorScheme: widget.colorScheme,
                   onStickerTap: _editSticker,
                 ),
                 const SizedBox(height: 16),
@@ -288,6 +298,7 @@ class _CubeEditorPageState extends State<CubeEditorPage> {
                           backgroundColor: CubeDisplayColors.colorFor(
                             face,
                             centerColors: widget.centerColors,
+                            colorScheme: widget.colorScheme,
                           ),
                         ),
                         label: Text('${face.letter} ${counts[face]}/9'),

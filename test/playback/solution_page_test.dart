@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rubicsolver/cube/cube_color_scheme.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/playback/cube_3d_view.dart';
@@ -72,6 +73,8 @@ void main() {
     );
 
     await tester.ensureVisible(find.text('下一步'));
+    await tester.ensureVisible(find.text('下一步'));
+    await tester.ensureVisible(find.text('下一步'));
     await tester.tap(find.text('下一步'));
     await tester.pump();
 
@@ -99,6 +102,8 @@ void main() {
 
     expect(find.byType(Cube3DView), findsOneWidget);
     expect(find.byKey(const ValueKey('sticker-0')), findsNothing);
+    await tester.ensureVisible(find.text('下一步'));
+    await tester.ensureVisible(find.text('下一步'));
     await tester.ensureVisible(find.text('下一步'));
     await tester.tap(find.text('下一步'));
     await tester.pump();
@@ -181,6 +186,75 @@ void main() {
     );
   });
 
+  testWidgets('shows the active formula above the animated cube', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R')],
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('下一步'));
+    await tester.tap(find.text('下一步'));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('current-animation-move')),
+      findsOneWidget,
+    );
+    expect(find.text('R'), findsWidgets);
+    final cubeTop = tester.getTopLeft(find.byType(Cube3DView)).dy;
+    final formulaTop = tester
+        .getTopLeft(find.byKey(const ValueKey('current-animation-move')))
+        .dy;
+    expect(formulaTop, lessThan(cubeTop));
+  });
+
+  testWidgets('animates a double turn at the same quarter-turn speed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R2')],
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('下一步'));
+    await tester.tap(find.text('下一步'));
+    await tester.pump();
+
+    final view = tester.widget<Cube3DView>(find.byType(Cube3DView));
+    expect(view.animationDuration, const Duration(milliseconds: 1440));
+  });
+
+  testWidgets('passes a configured scheme to playback rendering', (
+    tester,
+  ) async {
+    final colorScheme = CubeColorScheme.standard.swapColor(
+      CubeFace.up,
+      CubeFace.down,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R')],
+          colorScheme: colorScheme,
+        ),
+      ),
+    );
+
+    final view = tester.widget<Cube3DView>(find.byType(Cube3DView));
+    expect(view.colorScheme, colorScheme);
+  });
+
   testWidgets('offers a 2.4 second slow-motion playback option', (
     tester,
   ) async {
@@ -223,5 +297,30 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(tester.getSize(find.text('上一步')).height, lessThan(25));
     expect(tester.getSize(find.text('下一步')).height, lessThan(25));
+  });
+
+  testWidgets('keeps the cube and complete formula in the compact viewport', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R'), SolutionMove('U'), SolutionMove('F')],
+        ),
+      ),
+    );
+
+    final cube = find.byType(Cube3DView);
+    final formula = find.byKey(const ValueKey('solution-formula'));
+    expect(cube, findsOneWidget);
+    expect(formula, findsOneWidget);
+    expect(tester.getTopLeft(formula).dy, lessThan(640));
+    expect(tester.getBottomRight(cube).dy, lessThan(520));
   });
 }

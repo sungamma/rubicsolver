@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
 import '../cube/cube_state.dart';
 import '../scan/color_math.dart';
@@ -16,6 +17,7 @@ class SolutionPage extends StatefulWidget {
     CubeState? initial,
     required Iterable<SolutionMove> moves,
     this.centerColors = const {},
+    this.colorScheme = CubeColorScheme.standard,
     this.initialSpeed = defaultMoveSpeed,
   }) : assert(initialState != null || initial != null),
        initialState = initialState ?? initial!,
@@ -24,6 +26,7 @@ class SolutionPage extends StatefulWidget {
   final CubeState initialState;
   final List<SolutionMove> moves;
   final Map<CubeFace, RgbColor> centerColors;
+  final CubeColorScheme colorScheme;
   final Duration initialSpeed;
 
   @override
@@ -81,7 +84,7 @@ class _SolutionPageState extends State<SolutionPage> {
         appBar: AppBar(title: const Text('解法演示')),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 620),
@@ -89,7 +92,9 @@ class _SolutionPageState extends State<SolutionPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildProgress(context),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 6),
+                    _buildAnimationFormula(context),
+                    const SizedBox(height: 4),
                     SizedBox(
                       width: double.infinity,
                       child: Cube3DView(
@@ -99,14 +104,16 @@ class _SolutionPageState extends State<SolutionPage> {
                         animateDisplayedMove: false,
                         animationDuration: _cubeAnimationDuration(
                           _player.speed,
+                          _player.transitionMove,
                         ),
+                        colorScheme: widget.colorScheme,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 6),
                     _buildInstruction(context),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
                     _buildControls(context),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 10),
                     _buildFormula(context),
                   ],
                 ),
@@ -149,7 +156,7 @@ class _SolutionPageState extends State<SolutionPage> {
     final move = _player.currentMove;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(10),
         child: Row(
           children: [
             CircleAvatar(
@@ -266,14 +273,44 @@ class _SolutionPageState extends State<SolutionPage> {
     );
   }
 
-  Duration _cubeAnimationDuration(Duration speed) {
-    return switch (speed.inMilliseconds) {
+  Duration _cubeAnimationDuration(Duration speed, SolutionMove? move) {
+    final quarterTurnDuration = switch (speed.inMilliseconds) {
       500 => const Duration(milliseconds: 380),
       900 => const Duration(milliseconds: 720),
       1400 => const Duration(milliseconds: 1200),
       2400 => const Duration(milliseconds: 2100),
       _ => const Duration(milliseconds: 320),
     };
+    return move?.isDouble == true
+        ? quarterTurnDuration * 2
+        : quarterTurnDuration;
+  }
+
+  Widget _buildAnimationFormula(BuildContext context) {
+    final move = _player.transitionMove;
+    if (move == null) {
+      return const SizedBox(height: 24);
+    }
+    return Align(
+      alignment: Alignment.center,
+      child: DecoratedBox(
+        key: const ValueKey('current-animation-move'),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: Text(
+            '当前动作  ${move.notation}',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildFormula(BuildContext context) {
@@ -286,8 +323,9 @@ class _SolutionPageState extends State<SolutionPage> {
         Text('完整解法', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         Card(
+          key: const ValueKey('solution-formula'),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(6),
             child: Wrap(
               spacing: 6,
               runSpacing: 6,

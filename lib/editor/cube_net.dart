@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
 import '../cube/cube_state.dart';
 import '../scan/color_math.dart';
@@ -14,6 +15,7 @@ class CubeNet extends StatelessWidget {
     this.centerColors = const {},
     this.highlightColor,
     this.showCenterLocks = true,
+    this.colorScheme = CubeColorScheme.standard,
   });
 
   final CubeState state;
@@ -22,6 +24,7 @@ class CubeNet extends StatelessWidget {
   final Map<CubeFace, RgbColor> centerColors;
   final Color? highlightColor;
   final bool showCenterLocks;
+  final CubeColorScheme colorScheme;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +46,7 @@ class CubeNet extends StatelessWidget {
                     onStickerTap: onStickerTap,
                     highlightColor: highlightColor,
                     showCenterLocks: showCenterLocks,
+                    colorScheme: colorScheme,
                   ),
                 ),
                 const Spacer(flex: 2),
@@ -67,6 +71,7 @@ class CubeNet extends StatelessWidget {
                       onStickerTap: onStickerTap,
                       highlightColor: highlightColor,
                       showCenterLocks: showCenterLocks,
+                      colorScheme: colorScheme,
                     ),
                   ),
               ],
@@ -85,6 +90,7 @@ class CubeNet extends StatelessWidget {
                     onStickerTap: onStickerTap,
                     highlightColor: highlightColor,
                     showCenterLocks: showCenterLocks,
+                    colorScheme: colorScheme,
                   ),
                 ),
                 const Spacer(flex: 2),
@@ -106,6 +112,7 @@ class _FaceGrid extends StatelessWidget {
     required this.onStickerTap,
     required this.highlightColor,
     required this.showCenterLocks,
+    required this.colorScheme,
   });
 
   final CubeFace face;
@@ -115,6 +122,7 @@ class _FaceGrid extends StatelessWidget {
   final ValueChanged<int>? onStickerTap;
   final Color? highlightColor;
   final bool showCenterLocks;
+  final CubeColorScheme colorScheme;
 
   @override
   Widget build(BuildContext context) {
@@ -140,6 +148,7 @@ class _FaceGrid extends StatelessWidget {
           color: CubeDisplayColors.colorFor(
             stickerFace,
             centerColors: centerColors,
+            colorScheme: colorScheme,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(4),
@@ -163,6 +172,7 @@ class _FaceGrid extends StatelessWidget {
                     color: CubeDisplayColors.foregroundFor(
                       stickerFace,
                       centerColors: centerColors,
+                      colorScheme: colorScheme,
                     ),
                   ),
               ],
