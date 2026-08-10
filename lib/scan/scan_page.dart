@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
 import '../cube/cube_palette.dart';
 import '../cube/cube_state.dart';
@@ -31,6 +32,7 @@ class ScanPage extends StatefulWidget {
     this.sampleInBackground,
     this.sampleLiveFrame,
     this.session,
+    this.colorScheme = CubeColorScheme.standard,
   });
 
   final CameraDiscovery? cameraDiscovery;
@@ -39,6 +41,7 @@ class ScanPage extends StatefulWidget {
   final BackgroundFaceSampler? sampleInBackground;
   final LiveFrameSampler? sampleLiveFrame;
   final ScanSession? session;
+  final CubeColorScheme colorScheme;
 
   @override
   State<ScanPage> createState() => _ScanPageState();
@@ -69,7 +72,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _session = widget.session ?? ScanSession();
+    _session = widget.session ?? ScanSession(colorScheme: widget.colorScheme);
     WidgetsBinding.instance.addObserver(this);
     _lifecycleResumed = _isAppResumed;
     unawaited(_requestCameraReconcile());

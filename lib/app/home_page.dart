@@ -1,16 +1,25 @@
 import 'package:flutter/material.dart';
 
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_state.dart';
 import '../editor/cube_editor_page.dart';
 import '../scan/scan_page.dart';
 import '../settings/about_page.dart';
 import '../update/update_service.dart';
 import 'app_info.dart';
+import 'cube_color_scheme_dialog.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key, this.updateService});
 
   final UpdateService? updateService;
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  CubeColorScheme _colorScheme = CubeColorScheme.standard;
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +41,9 @@ class HomePage extends StatelessWidget {
             final actions = [
               FilledButton.icon(
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const ScanPage()),
+                  MaterialPageRoute<void>(
+                    builder: (_) => ScanPage(colorScheme: _colorScheme),
+                  ),
                 ),
                 icon: const Icon(Icons.camera_alt_outlined),
                 label: const Text('开始扫描'),
@@ -40,8 +51,10 @@ class HomePage extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) =>
-                        CubeEditorPage(initialState: CubeState.solved()),
+                    builder: (_) => CubeEditorPage(
+                      initialState: CubeState.solved(),
+                      colorScheme: _colorScheme,
+                    ),
                   ),
                 ),
                 icon: const Icon(Icons.edit_outlined),
@@ -75,6 +88,12 @@ class HomePage extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                       const SizedBox(height: 28),
+                      TextButton.icon(
+                        onPressed: () => _configureColorScheme(context),
+                        icon: const Icon(Icons.palette_outlined),
+                        label: const Text('配置六面配色'),
+                      ),
+                      const SizedBox(height: 12),
                       if (wide)
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -123,9 +142,20 @@ class HomePage extends StatelessWidget {
   void _showAbout(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => AboutPage(updateService: updateService),
+        builder: (_) => AboutPage(updateService: widget.updateService),
       ),
     );
+  }
+
+  Future<void> _configureColorScheme(BuildContext context) async {
+    final result = await showCubeColorSchemeDialog(
+      context,
+      initialScheme: _colorScheme,
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      _colorScheme = result;
+    });
   }
 }
 

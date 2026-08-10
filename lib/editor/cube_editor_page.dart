@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../cube/cube_color_scheme.dart';
 import '../cube/cube_face.dart';
 import '../cube/cube_state.dart';
 import '../cube/cube_validation.dart';
@@ -23,6 +24,7 @@ class CubeEditorPage extends StatefulWidget {
     this.centerColors = const {},
     this.onRescanFace,
     this.solver = const CubeSolver(),
+    this.colorScheme = CubeColorScheme.standard,
   });
 
   final CubeState initialState;
@@ -33,6 +35,7 @@ class CubeEditorPage extends StatefulWidget {
   final Map<CubeFace, RgbColor> centerColors;
   final ValueChanged<CubeFace>? onRescanFace;
   final CubeSolver solver;
+  final CubeColorScheme colorScheme;
 
   @override
   State<CubeEditorPage> createState() => _CubeEditorPageState();

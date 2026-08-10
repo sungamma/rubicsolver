@@ -1,8 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rubicsolver/app/rubik_solver_app.dart';
+import 'package:rubicsolver/cube/cube_face.dart';
+import 'package:rubicsolver/editor/cube_editor_page.dart';
+import 'package:rubicsolver/scan/scan_page.dart';
 import 'package:rubicsolver/update/update_service.dart';
 import 'package:rubicsolver/update/version_number.dart';
 
@@ -16,8 +19,59 @@ void main() {
 
     expect(find.text('开始扫描'), findsOneWidget);
     expect(find.text('手动录入'), findsOneWidget);
+    expect(find.text('配置六面配色'), findsOneWidget);
     expect(find.textContaining('照片仅在本机处理'), findsOneWidget);
     expect(find.textContaining('Kociemba'), findsOneWidget);
+  });
+
+  testWidgets('applies one configured scheme to scan and manual entry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const RubikSolverApp(enableStartupUpdateCheck: false),
+    );
+
+    await tester.tap(find.text('配置六面配色'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('scheme-face-U')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('黄色').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+    final scanButton = find
+        .ancestor(
+          of: find.text('开始扫描'),
+          matching: find.byWidgetPredicate(
+            (widget) => widget.runtimeType.toString().contains('FilledButton'),
+          ),
+        )
+        .last;
+    final scanButtonWidget = tester.widget(scanButton) as dynamic;
+    (scanButtonWidget.onPressed as VoidCallback)();
+    await tester.pump(const Duration(seconds: 1));
+    final scanFinder = find.byType(ScanPage, skipOffstage: false);
+    final scanPage = tester.widget<ScanPage>(scanFinder);
+    expect(scanPage.colorScheme.colorIdentityFor(CubeFace.up), CubeFace.down);
+
+    Navigator.of(tester.element(scanFinder)).pop();
+    await tester.pump(const Duration(milliseconds: 400));
+    final manualButton = find
+        .ancestor(
+          of: find.text('手动录入'),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget.runtimeType.toString().contains('OutlinedButton'),
+          ),
+        )
+        .last;
+    final manualButtonWidget = tester.widget(manualButton) as dynamic;
+    (manualButtonWidget.onPressed as VoidCallback)();
+    await tester.pumpAndSettle();
+    final editor = tester.widget<CubeEditorPage>(
+      find.byType(CubeEditorPage, skipOffstage: false),
+    );
+    expect(editor.colorScheme, scanPage.colorScheme);
   });
 
   testWidgets('manual entry opens the correction editor', (tester) async {
