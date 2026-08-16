@@ -8,6 +8,7 @@ import 'package:rubicsolver/app/rubik_solver_app.dart';
 import 'package:rubicsolver/cube/cube_state.dart';
 import 'package:rubicsolver/cube/cube_face.dart';
 import 'package:rubicsolver/editor/cube_editor_page.dart';
+import 'package:rubicsolver/patterns/pattern_gallery_page.dart';
 import 'package:rubicsolver/scan/scan_page.dart';
 import 'package:rubicsolver/solver/cube_scrambler.dart';
 import 'package:rubicsolver/solver/cube_solver.dart';
@@ -25,6 +26,7 @@ void main() {
     expect(find.text('开始扫描'), findsOneWidget);
     expect(find.text('手动录入'), findsOneWidget);
     expect(find.text('随机魔方'), findsOneWidget);
+    expect(find.text('花式魔方'), findsOneWidget);
     expect(find.text('配置六面配色'), findsOneWidget);
     expect(find.textContaining('照片仅在本机处理'), findsOneWidget);
     expect(find.textContaining('Kociemba'), findsOneWidget);
@@ -74,6 +76,47 @@ void main() {
     final editor = tester.widget<CubeEditorPage>(find.byType(CubeEditorPage));
     expect(editor.colorScheme.colorIdentityFor(CubeFace.up), CubeFace.down);
   });
+
+  testWidgets('pattern gallery keeps the configured display scheme', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const RubikSolverApp(enableStartupUpdateCheck: false),
+    );
+
+    await tester.tap(find.text('配置六面配色'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('scheme-face-U')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('黄色').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('花式魔方'));
+    await tester.pumpAndSettle();
+
+    final gallery = tester.widget<PatternGalleryPage>(
+      find.byType(PatternGalleryPage),
+    );
+    expect(gallery.colorScheme.colorIdentityFor(CubeFace.up), CubeFace.down);
+  });
+
+  for (final size in const [Size(320, 640), Size(700, 900)]) {
+    testWidgets('home fits four actions at ${size.width}dp', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = size;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      await tester.pumpWidget(
+        const RubikSolverApp(enableStartupUpdateCheck: false),
+      );
+
+      for (final label in const ['开始扫描', '随机魔方', '花式魔方', '手动录入']) {
+        expect(find.text(label), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('applies one configured scheme to scan and manual entry', (
     tester,

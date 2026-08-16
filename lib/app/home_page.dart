@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../cube/cube_color_scheme.dart';
 import '../cube/cube_state.dart';
 import '../editor/cube_editor_page.dart';
+import '../patterns/pattern_gallery_page.dart';
 import '../scan/scan_page.dart';
 import '../settings/about_page.dart';
 import '../solver/cube_scrambler.dart';
@@ -62,6 +63,16 @@ class _HomePageState extends State<HomePage> {
                 icon: const Icon(Icons.shuffle),
                 label: const Text('随机魔方'),
               ),
+              FilledButton.tonalIcon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        PatternGalleryPage(colorScheme: _colorScheme),
+                  ),
+                ),
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('花式魔方'),
+              ),
               OutlinedButton.icon(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -109,25 +120,32 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const SizedBox(height: 12),
                       if (wide)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Expanded(child: actions[0]),
-                            const SizedBox(width: 12),
-                            Expanded(child: actions[1]),
-                            const SizedBox(width: 12),
-                            Expanded(child: actions[2]),
-                          ],
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: actions.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                                mainAxisExtent: 48,
+                              ),
+                          itemBuilder: (context, index) => actions[index],
                         )
                       else
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            actions[0],
-                            const SizedBox(height: 12),
-                            actions[1],
-                            const SizedBox(height: 12),
-                            actions[2],
+                            for (
+                              var index = 0;
+                              index < actions.length;
+                              index++
+                            ) ...[
+                              actions[index],
+                              if (index != actions.length - 1)
+                                const SizedBox(height: 12),
+                            ],
                           ],
                         ),
                       const SizedBox(height: 24),
