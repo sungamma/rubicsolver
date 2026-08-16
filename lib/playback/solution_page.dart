@@ -19,6 +19,9 @@ class SolutionPage extends StatefulWidget {
     this.centerColors = const {},
     this.colorScheme = CubeColorScheme.standard,
     this.initialSpeed = defaultMoveSpeed,
+    this.title = '解法演示',
+    this.completionText = '复原完成',
+    this.formulaTitle = '完整解法',
   }) : assert(initialState != null || initial != null),
        initialState = initialState ?? initial!,
        moves = List.unmodifiable(moves);
@@ -28,6 +31,9 @@ class SolutionPage extends StatefulWidget {
   final Map<CubeFace, RgbColor> centerColors;
   final CubeColorScheme colorScheme;
   final Duration initialSpeed;
+  final String title;
+  final String completionText;
+  final String formulaTitle;
 
   @override
   State<SolutionPage> createState() => _SolutionPageState();
@@ -81,7 +87,7 @@ class _SolutionPageState extends State<SolutionPage> {
     return AnimatedBuilder(
       animation: _player,
       builder: (context, _) => Scaffold(
-        appBar: AppBar(title: const Text('解法演示')),
+        appBar: AppBar(title: Text(widget.title)),
         body: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
@@ -188,7 +194,7 @@ class _SolutionPageState extends State<SolutionPage> {
       return '准备开始';
     }
     if (_player.isComplete) {
-      return '复原完成';
+      return widget.completionText;
     }
     return _player.currentMove?.instruction ?? '准备下一步';
   }
@@ -320,7 +326,10 @@ class _SolutionPageState extends State<SolutionPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('完整解法', style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          widget.formulaTitle,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         Card(
           key: const ValueKey('solution-formula'),

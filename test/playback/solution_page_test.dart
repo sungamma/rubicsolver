@@ -34,6 +34,27 @@ void main() {
     expect(find.textContaining('正对右面看'), findsOneWidget);
   });
 
+  testWidgets('supports pattern-specific playback copy', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SolutionPage(
+          initialState: CubeState.solved(),
+          moves: [SolutionMove('R')],
+          title: '棋盘格演示',
+          completionText: '花式完成',
+          formulaTitle: '完整拼法',
+        ),
+      ),
+    );
+
+    expect(find.text('棋盘格演示'), findsOneWidget);
+    expect(find.text('完整拼法'), findsOneWidget);
+    await tester.ensureVisible(find.text('下一步'));
+    await tester.tap(find.text('下一步'));
+    await tester.pump();
+    expect(find.text('花式完成'), findsOneWidget);
+  });
+
   testWidgets('formula chips seek and play button toggles', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
